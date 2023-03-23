@@ -11,8 +11,8 @@
   Script for monitoring Winamp, and restart it when idle, to get the Media Library written to disk.
   
   .DESCRIPTION
-  The WinAmp Media Library database is only saved when Winamp is closed. If Winamp has been open for a long time, and later the app crashes, those changes will be lost. (I usually keep Winamp open for days)
-  This script keeps monitoring Winamp in the background, using the Windows API, and if the plaback is paused/stopped for `$FlushAfterSeconds`, the app will be restarted. Playback will be seeked back to the same position, as before the restart.
+  The WinAmp Media Library database is only saved when Winamp is closed. If Winamp has been open for a long time, and the app crashes, those changes will be lost. (I usually keep Winamp open for days.)
+  This script keeps monitoring Winamp in the background, using the Windows API, and if the plaback is paused/stopped for `$FlushAfterSeconds`, the app will be restarted to flush the database. Playback will be seeked back to the same position, as before the restart.
 
   .PARAMETER FlushAfterSeconds
   Restart Winamp after it has been idle for this number of seconds. Default is 300 seconds (5 minutes).
@@ -67,9 +67,10 @@ function Logger {
   }
 }
 
+###
 #Region Register-PowerShellScheduledTask
+###
 
-# Source: https://github.com/levid0s
 function Register-PowerShellScheduledTask {
   param(
     [Parameter(Mandatory = $true)]$ScriptPath,
@@ -179,9 +180,33 @@ shell.Run command, 0, true
   }
 }
 
+###
 #Endregion
+###
 
+###
 #Region Control-WinApps.ps1
+###
+
+#   Copyright (c) 2014 Serguei Kouzmine
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
 
 <#
 .SYNOPSIS
@@ -2941,7 +2966,10 @@ namespace System.Windows
     
 }
 "@ -ReferencedAssemblies 'System.Windows.Forms.dll', 'System.Drawing.dll', 'Microsoft.CSharp.dll' , 'System.Xml.Linq.dll', 'System.Xml.dll'
+
+###
 #Endregion
+###
 
 $LogLevels = @{
   "Error"       = 1
