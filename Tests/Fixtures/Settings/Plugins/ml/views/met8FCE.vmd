@@ -1,0 +1,17 @@
+[gen_ml_config]
+mv_sort_by=10
+mv_sort_dir=0
+column0=10
+column1=9
+column2=0
+column3=1
+column4=2
+column5=3
+nbcolumns=6
+lastquery_utf8=
+mv_col_lastplay=115
+mv_col_playcount=70
+mv_col_artist=140
+mv_col_title=140
+mv_col_album=140
+mv_col_length=55

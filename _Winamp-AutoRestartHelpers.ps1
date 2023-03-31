@@ -1,51 +1,5 @@
-<#PSScriptInfo
-.VERSION      2023.03.22
-.AUTHOR       Levente Rog
-.COPYRIGHT    (c) 2023 Levente Rog
-.LICENSEURI   https://github.com/levid0s/Winamp-AutoRestart/blob/master/LICENSE.md
-.PROJECTURI   https://github.com/levid0s/Winamp-AutoRestart/
-#>
-
-<#
-  .SYNOPSIS
-  Script for monitoring Winamp, and restart it when idle, to get the Media Library written to disk.
-  
-  .DESCRIPTION
-  The WinAmp Media Library database is only saved when Winamp is closed. If Winamp has been open for a long time, and the app crashes, those changes will be lost. (I usually keep Winamp open for days.)
-  This script keeps monitoring Winamp in the background, using the Windows API, and if the plaback is paused/stopped for `$FlushAfterSeconds`, the app will be restarted to flush the database. Playback will be seeked back to the same position, as before the restart.
-
-  .PARAMETER FlushAfterSeconds
-  Restart Winamp after it has been idle for this number of seconds. Default is 300 seconds (5 minutes).
-  Idle means plackback is either stopped or paused.
-
-  .PARAMETER LogLevel
-  The level of logging to write to the Log file. Default is 'Information'.
-  Valid values are: 'Verbose', 'Debug', 'Information'
-
-  .PARAMETER Install [CurrentUser|AllUsers]
-  Install the script as a Windows Scheduled Task, to run at startup.
-  AllUsers requires the script to be run as Administrator (although the Scheduled task will be started as limited privileges, as `BUILTIN\Users`).
-  A detailed Log file is written to `%TEMP%\Start-WinampAutoFlush.ps1-%TIMESTAMP%.log`
-  **CAVEATS**: Stopping the Scheduled Task doesn't kill the running PowerShell script; You'll have to kill it manually using the Task manager.
-
-  .PARAMETER Uninstall
-  Remove the previously created Windows Scheduled Task
-
-  .TODO
-  - It would be more efficient to start the task at logon, instead of every 15 minutes.
-#>
-
-param(
-  [int]$FlushAfterSeconds = 300,
-  [Parameter()][ValidateSet('Verbose', 'Debug', 'Information')][string]$LogLevel = 'Information',
-  [Parameter()][ValidateSet('CurrentUser', 'AllUsers')]$Install = $null,
-  [switch]$Uninstall
-)
-
-$MyScript = $MyInvocation.MyCommand.Source
-$ScriptName = Split-Path $MyScript -Leaf
-$Timestamp = Get-Date -Format "yyyMMdd-HHmmss"
-$LogPath = "$env:TEMP\${ScriptName}-$Timestamp.log"
+$WM_COMMAND = 0x0111
+$WM_USER = 0x0400
 
 function Logger {
   param(
@@ -57,6 +11,7 @@ function Logger {
   switch ($LogLevel) {
     "Information" {
       Write-Information "${Timestamp}: $Message"
+      Write-Host "INFO: ${Timestamp}: $Message"
     }
     "Debug" {
       Write-Debug "${Timestamp}: $Message"
@@ -67,122 +22,153 @@ function Logger {
   }
 }
 
-###
-#Region Register-PowerShellScheduledTask
-###
-
-function Register-PowerShellScheduledTask {
+function Wait-WinampInit {
+  <#
+  .VERSION 2023.03.30
+  .SYNOPSIS
+  Wait until the Winamp API is ready to accept commands
+  #>
   param(
-    [Parameter(Mandatory = $true)]$ScriptPath,
-    [hashtable]$Parameters = @{},
-    [string]$TaskName,
-    [bool]$AllowRunningOnBatteries = $true,
-    [switch]$DisallowHardTerminate,
-    [TimeSpan]$ExecutionTimeLimit, # PT72H, PT15M, PT30S etc. PT0S = disabled.
-    [string]$GroupId,
-    [switch]$Uninstall
+    $window
   )
 
-  if ([string]::IsNullOrEmpty($TaskName)) {
-    $TaskName = Split-Path $ScriptPath -Leaf
-  }
+  $StartTime = Get-Date
 
-  ## Uninstall
-  if ($Uninstall) {
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-    return
-  }
-
-  ## Install
-
-  if (!(Test-Path $ScriptPath)) {
-    Throw "Script ``$ScriptPath`` not found!"
-  }
-  $ScriptPath = Resolve-Path -LiteralPath $ScriptPath
-
-  # Create wrapper vbs script so we can run the PowerShell script as hidden
-  # https://github.com/PowerShell/PowerShell/issues/3028
-
-  if ($GroupId) {
-    $vbsPath = "$env:ALLUSERSPROFILE\PsScheduledTasks\$TaskName.vbs"
-  }
-  else {
-    $vbsPath = "$env:LOCALAPPDATA\PsScheduledTasks\$TaskName.vbs"
-  }
-  $vbsDir = Split-Path $vbsPath -Parent
-
-  if (!(Test-Path $vbsDir)) {
-    New-Item -ItemType Directory -Path $vbsDir
-  }
-
-  $ps = @(); $Parameters.GetEnumerator() | ForEach-Object { $ps += "-$($_.Name) $($_.Value)" }; $ps = $ps -join " "
-  $vbsScript = @"
-Dim shell,command
-command = "powershell.exe -nologo -File $ScriptPath $ps"
-Set shell = CreateObject("WScript.Shell")
-shell.Run command, 0, true
-"@
-
-  Set-Content -Path $vbsPath -Value $vbsScript -Force
-
-  Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue -OutVariable TaskExists
-  if ($TaskExists.State -eq 'Running') {
-    $TaskExists | Stop-ScheduledTask
-  }
-  $action = New-ScheduledTaskAction -Execute $vbsPath
-  
-  ## Schedule 
-
-  $t1 = New-ScheduledTaskTrigger -Daily -At 00:05
-  $t2 = New-ScheduledTaskTrigger -Once -At 00:05 `
-    -RepetitionInterval (New-TimeSpan -Minutes 15) `
-    -RepetitionDuration (New-TimeSpan -Hours 23 -Minutes 55)
-  $t1.Repetition = $t2.Repetition
-    
-
-  ## GroupId
-
-  $PrincipalConf = @{}
-  if ($GroupId) {
-    $STPrin = New-ScheduledTaskPrincipal -GroupId $GroupId
-    $PrincipalConf = @{
-      "Principal" = $STPrin
+  $process = Get-Process 'winamp' -ErrorAction SilentlyContinue
+  if ($process.Count -ne 1) {
+    Logger -LogLevel Debug "Waiting for the Winamp process to start.."
+    Write-Host "Waiting for Winamp to start." -NoNewline
+    while ($process.Count -ne 1) {
+      try {
+        $process = Get-Process 'winamp' -ErrorAction SilentlyContinue
+      }
+      catch {
+      }
+      Start-Sleep -Seconds 1
+      Write-Host "." -NoNewline
     }
+    Write-Host ": ok"
   }
 
-  ## Settings 
-  $AdditionalSettings = @{}
-
-  if ($AllowRunningOnBatteries) {
-    $AdditionalSettings.AllowStartIfOnBatteries = $true
-    $AdditionalSettings.DontStopIfGoingOnBatteries = $true
+  if ($window.ClassName -ne 'Winamp v1.x') {
+    Logger -LogLevel Debug "Waiting for the Winamp API to initialise.."
+    Write-Host "Waiting for the Winamp 1.x class to load." -NoNewline
+    while ($window.ClassName -ne 'Winamp v1.x') {
+      try {
+        $window = [System.Windows.Win32Window]::FromProcessName("winamp")
+      }
+      catch {
+      }
+      Start-Sleep -Seconds 1
+      Write-Host "." -NoNewline
+    }
+    Write-Host ": ok"
   }
+  
+  Write-Host "Waiting for the API to be ready." -NoNewline
 
-  if ($DisallowHardTerminate) {
-    $AdditionalSettings.DisallowHardTerminate = $true
-  }
+  do {
+    $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
+    Write-Host "." -NoNewline
+    Start-Sleep -Seconds 1
+  } while (!([long]$SeekPosMS -gt 0))
+  $Duration = (Get-Date) - $StartTime
+  Write-Host ": ok ($SeekPosMS)"
+  Logger -LogLevel Debug "API ready. SeekPosMS: $SeekPosMS. Duration: $Duration"
+  return $window | Where-Object ClassName -eq 'Winamp v1.x' 
+}
 
-  if ($ExecutionTimeLimit) {
-    $AdditionalSettings.ExecutionTimeLimit = $ExecutionTimeLimit
-  }
+function Get-WinampStatus {
+  param(
+    [Parameter(Mandatory = $true)]$Window
+  )
+  $playStatus = Get-WinampPlayStatus -Window $Window
+  $SeekPosMS = Get-WinampSeekPos -Window $Window
 
-  $STSet = New-ScheduledTaskSettingsSet `
-    -MultipleInstances IgnoreNew `
-    @AdditionalSettings
-
-  ## Register / Update
-
-  if (!$TaskExists) {
-    Register-ScheduledTask -Action $action -Trigger $t1 -TaskName $TaskName -Description "Scheduled Task for running $ScriptPath" -Settings $STSet @PrincipalConf
-  }
-  else {
-    Set-ScheduledTask -TaskName $TaskName -Action $action -Trigger $t1 -Settings $STSet @PrincipalConf
+  $status = "$($window.hWnd); $playStatus; $SeekPosMS"
+  return @{
+    hWnd        = $window.hWnd
+    PlayStatus  = $playStatus
+    SeekPosMS   = $SeekPosMS
+    statusCheck = $status
+    StartTime   = $window.Process.StartTime
   }
 }
 
-###
-#Endregion
-###
+#######
+
+function Get-WinampSeekPos {
+  param(
+    [Parameter(Mandatory = $true)]$Window
+  )
+  $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
+  while ($SeekPosMS -eq 0) {
+    Start-Sleep 1
+    $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
+  }
+  return $SeekPosMS
+}
+
+function Get-WinampPlayStatus {
+  <#
+  0: stopped, 1: playing, 3: paused
+  #>
+  param(
+    [Parameter(Mandatory = $true)]$Window
+  )
+  $playStatus = $window.SendMessage($WM_USER, 0, 104) # 0: stopped, 1: playing, 3: paused
+  return $playStatus
+}
+
+function Invoke-WinampPause {
+  param(
+    [Parameter(Mandatory = $true)]$Window
+  )
+  Logger -LogLevel Information "Pressing: Pause"
+  $result = $window.SendMessage($WM_COMMAND, 40046, 0)
+  return $result
+}
+
+function Invoke-WinampPlay {
+  param(
+    [Parameter(Mandatory = $true)]$Window
+  )
+  Logger -LogLevel Information "Pressing: Play"
+  $result = $window.SendMessage($WM_COMMAND, 40045, 0)
+  return $result
+}
+
+function Invoke-WinampRestart {
+  param(
+    [Parameter(Mandatory = $true)]$Window
+  )
+  Logger -LogLevel Information "RESTARTING Winamp.."
+  $result = $window.SendMessage($WM_USER, 0, 135)
+  return $result
+}
+
+function Set-WinampPlaylistIndex {
+  param(
+    [Parameter(Mandatory = $true)]$Window,
+    [Parameter(Mandatory = $true)][int]$PlaylistIndex
+  )
+
+  Logger -LogLevel Information "Seeking to Playlist index: $($PlaylistIndex)"
+  $result = $window.SendMessage($WM_USER, $PlaylistIndex - 1, 121)
+  return $result
+}
+
+function Set-WinampSeekPos {
+  param(
+    [Parameter(Mandatory = $true)]$Window,
+    [Parameter(Mandatory = $true)][int]$SeekPosMS
+  )
+  Logger -LogLevel Information "Seeking track to time(ms): $($SeekPosMS)"
+  $result = $window.SendMessage($WM_USER, $SeekPosMS, 106)
+  return $result
+}
+
+#######
 
 ###
 #Region Control-WinApps.ps1
@@ -215,7 +201,7 @@ Low Level Win32 API calls to control a windows app
 Get Winamp Play/Stop status:
 $window = [System.Windows.Win32Window]::FromProcessName("winamp")
 $window.SendMessage(0x0400,0,104)
-# ref: https://forums.winamp.com/forum/developer-center/winamp-development/156726-winamp-application-programming-interface?postid=1953663#post2810588
+# ref: https://forums.winamp.com/forum/developer-center/winamp-development/156726-winamp-application-programming-interface?postid=1953663
 .LINK
 source: https://github.com/sergueik/powershell_selenium/blob/master/powershell/button_selenium.ps1
 ref: http://www.codeproject.com/Articles/790966/Hosting-And-Changing-Controls-In-Other-Application
@@ -2970,168 +2956,3 @@ namespace System.Windows
 ###
 #Endregion
 ###
-
-$LogLevels = @{
-  "Error"       = 1
-  "Warning"     = 2
-  "Information" = 3
-  "Debug"       = 4
-  "Verbose"     = 5
-}
-$LogLevelv = $LogLevels.$LogLevel
-
-switch ($LogLevelv) {
-  { $_ -ge 3 } { $InformationPreference = 'SilentlyContinue' } # PS 5.1 Bug: https://stackoverflow.com/questions/55191548/write-information-does-not-show-in-a-file-transcribed-by-start-transcript
-  { $_ -ge 4 } { $DebugPreference = 'Continue' }
-  { $_ -ge 5 } { $VerbosePreference = 'Continue' }
-}
-
-if ($Install) {
-  $ps = @{
-    FlushAfterSeconds = $FlushAfterSeconds
-    LogLevel          = $LogLevel
-  }
-  $SchTaskGroupSett = @{}
-  if ($Install -eq 'AllUsers') {
-    $SchTaskGroupSett.GroupId = 'BUILTIN\Users'
-  }
-  Register-PowerShellScheduledTask -ScriptPath $MyScript -AllowRunningOnBatteries $true @SchTaskGroupSett -Parameters $ps -DisallowHardTerminate -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
-  return
-}
-
-if ($Uninstall) {
-  Register-PowerShellScheduledTask -ScriptPath $MyScript -Uninstall
-  return
-}
-
-Start-Transcript -Path $LogPath -append
-Logger -LogLevel Information -Message "Starting WinampAutoFlush. LogLevel: $LogLevel"
-Logger -LogLevel Information -Message "Winamp will be restarted after $FlushAfterSeconds seconds of inactivity."
-
-function Get-WinampStatus {
-  param(
-    [Parameter(Mandatory = $true)]$Window
-  )
-  $playStatus = $window.SendMessage(0x0400, 0, 104) # 0: stopped, 1: playing, 3: paused
-  $SeekPosMS = $window.SendMessage(0x0400, 0, 105)
-
-  $status = "$($window.hWnd); $playStatus; $SeekPosMS"
-  return @{
-    hWnd        = $window.hWnd
-    PlayStatus  = $playStatus
-    SeekPosMS   = $SeekPosMS
-    statusCheck = $status
-    StartTime   = $window.Process.StartTime
-  }
-}
-
-function Restart-Winamp {
-  # https://forums.winamp.com/forum/developer-center/winamp-development/156726-winamp-application-programming-interface?postid=1953663
-  param(
-    [Parameter(Mandatory = $true)]$Window
-  )
-
-  $WM_COMMAND = 0x0111
-  $WM_USER = 0x0400
-
-  $playStatus = $window.SendMessage($WM_USER, 0, 104) # 0: stopped, 1: playing, 3: paused
-  $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
-  Logger -LogLevel Debug "Winamp: hWnd: $($window.hWnd), PlayStatus: $playStatus, SeekPos: $SeekPosMS"
-
-  Logger -LogLevel Information "RESTARTING Winamp.."
-  $window.SendMessage($WM_USER, 0, 135) | Out-Null
-
-  while ($true) {
-    try {
-      $window = [System.Windows.Win32Window]::FromProcessName("winamp")
-      break
-    }
-    catch {
-      Logger -LogLevel Debug "Waiting for Winamp to restart.."
-      Start-Sleep -Seconds 1
-    }
-  }
-
-  Logger -LogLevel Debug "Winamp restarted: hWnd: $($window.hWnd), PlayStatus: $playStatus, SeekPos: $SeekPosMS"
-
-
-  switch ($playStatus) {
-    1 {
-      Logger -LogLevel Debug "Pressing: Play"
-      $window.SendMessage($WM_COMMAND, 40045, 0) | Out-Null
-      Logger -LogLevel Debug "Seeking to previous pos: $seekPosMS ms"
-      $window.SendMessage($WM_USER, $SeekPosMS, 106) | Out-Null
-    }
-    3 {
-      Logger -LogLevel Debug "Pressing: Play"
-      $window.SendMessage($WM_COMMAND, 40045, 0) | Out-Null
-      Logger -LogLevel Debug "Seeking to previous pos: $seekPosMS ms"
-      $window.SendMessage($WM_USER, $SeekPosMS, 106) | Out-Null
-      Logger -LogLevel Debug "Pressing: Pause"
-      $window.SendMessage($WM_COMMAND, 40046, 0) | Out-Null
-    }
-  }
-}
-
-$RestartedAt = $null
-$PlayStopped = $null
-$PlayStoppedCheck = $null
-
-Logger -LogLevel Debug "INIT: Winamp will be restarted after $FlushAfterSeconds seconds of inactivity."
-
-while ($true) {
-  Start-Sleep -Seconds ([int]($FlushAfterSeconds / 5))
-
-  if (!(Get-Process "winamp" -ErrorAction SilentlyContinue)) {
-    Logger -LogLevel Verbose "Winamp not started."
-    Continue
-  }
-
-  $window = [System.Windows.Win32Window]::FromProcessName("winamp")
-  $status = Get-WinampStatus -Window $window
-
-  if ($status.playStatus -eq 1) {
-    Logger -LogLevel Verbose "Winamp currently playing, nothing to do."
-    $PlayStopped = $null
-    Continue
-  }
-
-  $RunningForSeconds = ([TimeSpan]::Parse((Get-Date) - $status.StartTime)).TotalSeconds
-  Logger -LogLevel Verbose "STATS: Start Time: $($status.StartTime).  Running for: $([int]${RunningForSeconds})s"
-
-  if ($RestartedAt -eq $status.statusCheck) {
-    Logger -LogLevel Verbose "Winamp already restarted, nothing to do for now."
-    Continue
-  }
-
-  if ($RunningForSeconds -lt $FlushAfterSeconds) {
-    Logger -LogLevel Debug "Winamp started just recently ($RunningForSeconds seconds ago. Flush after: $FlushAfterSeconds). Recording state as RESTARTED. Nothing else to do."
-    $RestartedAt = $status.statusCheck
-    Continue
-  }
-
-  if (!$PlayStopped) {
-    Logger -LogLevel Debug "Winamp is now stopped or paused; recording state st STOPPED."
-    $PlayStopped = Get-Date
-    $PlayStoppedCheck = $status.statusCheck
-    Continue
-  }
-
-  if ($PlayStoppedCheck -ne $status.statusCheck) {
-    Logger -LogLevel Debug "Winamp's state has changed since the last check (even if it's currently stopped or paused). Resetting counter."
-    $PlayStopped = Get-Date
-    $PlayStoppedCheck = $status.statusCheck
-    Continue
-  }
-
-  $StoppedForSeconds = ([TimeSpan]::Parse((Get-Date) - $PlayStopped)).TotalSeconds
-  Logger -LogLevel Debug "Winamp stopped for $StoppedForSeconds seconds."
-
-  if ($StoppedForSeconds -gt $FlushAfterSeconds) {
-    Logger -LogLevel Debug "Winamp stopped for $FlushAfterSeconds seconds, restarting."
-    Restart-Winamp -Window $window
-    $window = [System.Windows.Win32Window]::FromProcessName("winamp")
-    $status = Get-WinampStatus -Window $window
-    $RestartedAt = $status.statusCheck
-  }
-}

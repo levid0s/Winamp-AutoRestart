@@ -1,0 +1,10 @@
+[gen_ml_config]
+mv_sort_by=8
+mv_sort_dir=0
+column0=8
+column1=9
+column2=0
+column3=1
+column4=2
+column5=3
+nbcolumns=6
