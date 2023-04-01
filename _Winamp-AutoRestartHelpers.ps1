@@ -6,17 +6,17 @@ function Logger {
     [Parameter()][ValidateSet('Information', 'Debug', 'Verbose')][string]$LogLevel,
     [Parameter(Mandatory)][string]$Message
   )
-  $Timestamp = Get-Date -Format "yyyMMdd-HHmmss"
+  $Timestamp = Get-Date -Format 'yyyMMdd-HHmmss'
 
   switch ($LogLevel) {
-    "Information" {
+    'Information' {
       Write-Information "${Timestamp}: $Message"
       Write-Host "INFO: ${Timestamp}: $Message"
     }
-    "Debug" {
+    'Debug' {
       Write-Debug "${Timestamp}: $Message"
     }
-    "Verbose" {
+    'Verbose' {
       Write-Verbose "${Timestamp}: $Message"
     }
   }
@@ -36,8 +36,8 @@ function Wait-WinampInit {
 
   $process = Get-Process 'winamp' -ErrorAction SilentlyContinue
   if ($process.Count -ne 1) {
-    Logger -LogLevel Debug "Waiting for the Winamp process to start.."
-    Write-Host "Waiting for Winamp to start." -NoNewline
+    Logger -LogLevel Debug 'Waiting for the Winamp process to start..'
+    Write-Host 'Waiting for Winamp to start.' -NoNewline
     while ($process.Count -ne 1) {
       try {
         $process = Get-Process 'winamp' -ErrorAction SilentlyContinue
@@ -45,37 +45,37 @@ function Wait-WinampInit {
       catch {
       }
       Start-Sleep -Seconds 1
-      Write-Host "." -NoNewline
+      Write-Host '.' -NoNewline
     }
-    Write-Host ": ok"
+    Write-Host ': ok'
   }
 
   if ($window.ClassName -ne 'Winamp v1.x') {
-    Logger -LogLevel Debug "Waiting for the Winamp API to initialise.."
-    Write-Host "Waiting for the Winamp 1.x class to load." -NoNewline
+    Logger -LogLevel Debug 'Waiting for the Winamp API to initialise..'
+    Write-Host 'Waiting for the Winamp 1.x class to load.' -NoNewline
     while ($window.ClassName -ne 'Winamp v1.x') {
       try {
-        $window = [System.Windows.Win32Window]::FromProcessName("winamp")
+        $window = [System.Windows.Win32Window]::FromProcessName('winamp')
       }
       catch {
       }
       Start-Sleep -Seconds 1
-      Write-Host "." -NoNewline
+      Write-Host '.' -NoNewline
     }
-    Write-Host ": ok"
+    Write-Host ': ok'
   }
   
-  Write-Host "Waiting for the API to be ready." -NoNewline
+  Write-Host 'Waiting for the API to be ready.' -NoNewline
 
   do {
     $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
-    Write-Host "." -NoNewline
+    Write-Host '.' -NoNewline
     Start-Sleep -Seconds 1
   } while (!([long]$SeekPosMS -gt 0))
   $Duration = (Get-Date) - $StartTime
   Write-Host ": ok ($SeekPosMS)"
   Logger -LogLevel Debug "API ready. SeekPosMS: $SeekPosMS. Duration: $Duration"
-  return $window | Where-Object ClassName -eq 'Winamp v1.x' 
+  return $window | Where-Object ClassName -EQ 'Winamp v1.x' 
 }
 
 function Get-WinampStatus {
@@ -101,7 +101,12 @@ function Get-WinampSeekPos {
   param(
     [Parameter(Mandatory = $true)]$Window
   )
-  $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
+  # [long]$SeekPosMS = ExponentialBackoff -Rounds 3 -InitialDelayMs 100 -Do {
+  #   $window.SendMessage($WM_USER, 0, 105)
+  # } -Check {
+  #   $result -gt 0
+  # }
+  [long]$SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
   while ($SeekPosMS -eq 0) {
     Start-Sleep 1
     $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
@@ -124,8 +129,19 @@ function Invoke-WinampPause {
   param(
     [Parameter(Mandatory = $true)]$Window
   )
-  Logger -LogLevel Information "Pressing: Pause"
-  $result = $window.SendMessage($WM_COMMAND, 40046, 0)
+  Logger -LogLevel Information 'Pressing: Pause'
+  $result = ExponentialBackoff -Rounds 3 -InitialDelayMs 100 -Do {
+    $window.SendMessage($WM_COMMAND, 40046, 0)
+  } -Check {
+    (Get-WinampStatus -Window $Window).PlayStatus -eq 3
+  }
+  # $result = $window.SendMessage($WM_COMMAND, 40046, 0)
+  # $status = Get-WinampStatus -Window $Window
+  # if ($status.PlayStatus -ne 3) {
+  #   Start-Sleep -Milliseconds 100
+  #   Logger -LogLevel Information 'Pause failed. Retrying..'
+  #   $result = $window.SendMessage($WM_COMMAND, 40046, 0)
+  # }
   return $result
 }
 
@@ -133,8 +149,19 @@ function Invoke-WinampPlay {
   param(
     [Parameter(Mandatory = $true)]$Window
   )
-  Logger -LogLevel Information "Pressing: Play"
-  $result = $window.SendMessage($WM_COMMAND, 40045, 0)
+  Logger -LogLevel Information 'Pressing: Play'
+  $result = ExponentialBackoff -Rounds 3 -InitialDelayMs 100 -Do {
+    $window.SendMessage($WM_COMMAND, 40045, 0)
+  } -Check {
+    (Get-WinampStatus -Window $Window).PlayStatus -eq 1
+  }
+  # $result = $window.SendMessage($WM_COMMAND, 40045, 0)
+  # $status = Get-WinampStatus -Window $Window
+  # if ($status.PlayStatus -ne 1) {
+  #   Start-Sleep -Milliseconds 100
+  #   Logger -LogLevel Information 'Play failed. Retrying..'
+  #   $result = $window.SendMessage($WM_COMMAND, 40045, 0)
+  # }
   return $result
 }
 
@@ -142,7 +169,7 @@ function Invoke-WinampRestart {
   param(
     [Parameter(Mandatory = $true)]$Window
   )
-  Logger -LogLevel Information "RESTARTING Winamp.."
+  Logger -LogLevel Information 'RESTARTING Winamp..'
   $result = $window.SendMessage($WM_USER, 0, 135)
   return $result
 }
@@ -161,11 +188,59 @@ function Set-WinampPlaylistIndex {
 function Set-WinampSeekPos {
   param(
     [Parameter(Mandatory = $true)]$Window,
-    [Parameter(Mandatory = $true)][int]$SeekPosMS
+    [Parameter(Mandatory = $true)][long]$SeekPosMS
   )
   Logger -LogLevel Information "Seeking track to time(ms): $($SeekPosMS)"
-  $result = $window.SendMessage($WM_USER, $SeekPosMS, 106)
+  $ExpBackoffRounds = 3
+  $ExpBackoffDelay = 100
+  ExponentialBackoff -Rounds $ExpBackoffRounds -InitialDelayMs $ExpBackoffDelay -Do {
+    $result = $window.SendMessage($WM_USER, $SeekPosMS, 106)
+  } -Check {
+    [long]$test = Get-WinampSeekPos -Window $Window;
+    ([Math]::Abs($SeekPosMS - $test) -lt 2000)
+  }
+
+  # for ($round = 1; $round -le $ExpBackoffRounds; $round++) {
+  #   if ($round -gt 1) {
+  #     Logger -LogLevel Information 'Seeking failed. Retrying with exponential backoff, round $round..'
+  #     Start-Sleep -Milliseconds $ExpBackoffDelay
+  #     $ExpBackoffDelay *= 2
+  #   }
+  #   $result = $window.SendMessage($WM_USER, $SeekPosMS, 106)
+  #   [long]$test = Get-WinampSeekPos -Window $Window
+  #   if ([Math]::Abs($SeekPosMS - $test) -lt 2000) {
+  #     break
+  #   }
+  # }
+
   return $result
+}
+
+Function ExponentialBackoff {
+  param(
+    [int]$Rounds = 3,
+    [int]$InitialDelayMs = 100,
+    [scriptblock]$Do,
+    [scriptblock]$Check
+  )
+
+  for ($round = 1; $round -le $rounds; $round++) {
+    if ($round -gt 1) {
+      Write-Debug "Operatoin failed, retrying with exponential backoff, round $round. Sleeping for $InitialDelayMs ms.."
+      Start-Sleep -Milliseconds $InitialDelayMs  
+      $InitialDelayMs *= 2
+    }
+    try {
+      $result = & $Do
+    }
+    catch {
+    }
+
+    if (& $Check) {
+      Write-Debug 'Check returned true, exiting.'
+      break
+    }
+  }
 }
 
 #######
@@ -206,7 +281,7 @@ $window.SendMessage(0x0400,0,104)
 source: https://github.com/sergueik/powershell_selenium/blob/master/powershell/button_selenium.ps1
 ref: http://www.codeproject.com/Articles/790966/Hosting-And-Changing-Controls-In-Other-Application
 #>
-Add-Type -TypeDefinition @"
+Add-Type -TypeDefinition @'
 using System.Diagnostics;
 using System.Drawing;
 using System.Runtime.InteropServices;
@@ -2951,7 +3026,7 @@ namespace System.Windows
     }
     
 }
-"@ -ReferencedAssemblies 'System.Windows.Forms.dll', 'System.Drawing.dll', 'Microsoft.CSharp.dll' , 'System.Xml.Linq.dll', 'System.Xml.dll'
+'@ -ReferencedAssemblies 'System.Windows.Forms.dll', 'System.Drawing.dll', 'Microsoft.CSharp.dll' , 'System.Xml.Linq.dll', 'System.Xml.dll'
 
 ###
 #Endregion

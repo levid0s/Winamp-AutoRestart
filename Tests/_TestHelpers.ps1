@@ -35,7 +35,7 @@ Function Start-TestWinamp {
 
 Function Stop-TestWinamp {
   &$WinampPath /close
-  Start-SleepOrCondition -Seconds 30 -Condition { $testWinamp.HasExited }
+  Start-SleepUntilTrue -Seconds 30 -Condition { $testWinamp.HasExited }
   if (!$testWinamp.HasExited) {
     $testWinamp.Kill()
     $testWinamp.WaitForExit()

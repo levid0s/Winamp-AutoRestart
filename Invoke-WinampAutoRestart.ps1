@@ -42,7 +42,7 @@ param(
 
 $MyScript = $MyInvocation.MyCommand.Source
 $ScriptName = Split-Path $MyScript -Leaf
-$Timestamp = Get-Date -Format "yyyMMdd-HHmmss"
+$Timestamp = Get-Date -Format 'yyyMMdd-HHmmss'
 $LogPath = "$env:TEMP\${ScriptName}-$Timestamp.log"
 
 # End this PowerShell script if the parent process (Scheduled Task Job) has exited
@@ -56,7 +56,7 @@ $HaltScriptOnParentExit = { Start-Job -ScriptBlock {
     # Stop the PowerShell script
     # Append to the end of the logfile
     Stop-Transcript
-    "INFO: Parent process has exited. Stopping the script." >> $LogPath
+    'INFO: Parent process has exited. Stopping the script.' >> $LogPath
     Stop-Process $ScriptPid
   } -ArgumentList $pid, $LogPath | Out-Null
 }
@@ -166,7 +166,7 @@ function Register-PowerShellScheduledTask {
     New-Item -ItemType Directory -Path $vbsDir
   }
 
-  $ps = @(); $Parameters.GetEnumerator() | ForEach-Object { $ps += "-$($_.Name) $($_.Value)" }; $ps -join " "
+  $ps = @(); $Parameters.GetEnumerator() | ForEach-Object { $ps += "-$($_.Name) $($_.Value)" }; $ps -join ' '
   $vbsScript = @"
 Dim shell,command
 command = "powershell.exe -nologo -File $ScriptPath $ps"
@@ -255,12 +255,12 @@ shell.Run command, 0, true
 ###
 
 $LogLevels = @{
-  "Error"       = 1
-  "Warning"     = 2
-  "Information" = 3
-  "Info"        = 3
-  "Debug"       = 4
-  "Verbose"     = 5
+  'Error'       = 1
+  'Warning'     = 2
+  'Information' = 3
+  'Info'        = 3
+  'Debug'       = 4
+  'Verbose'     = 5
 }
 $LogLevelv = $LogLevels.$LogLevel
 
@@ -296,7 +296,7 @@ if ($Uninstall) {
   return
 }
 
-Start-Transcript -Path $LogPath -append
+Start-Transcript -Path $LogPath -Append
 Logger -LogLevel Information -Message "Starting WinampAutoFlush. LogLevel: $LogLevel"
 Logger -LogLevel Information -Message "Winamp will be restarted after $FlushAfterSeconds seconds of inactivity."
 
@@ -312,11 +312,11 @@ function Restart-Winamp {
   $playStatus = $window.SendMessage($WM_USER, 0, 104) # 0: stopped, 1: playing, 3: paused
   $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
   Logger -LogLevel Debug "Winamp: hWnd: $($window.hWnd), PlayStatus: $playStatus, SeekPos: $SeekPosMS"
-  Logger -LogLevel Information "RESTARTING Winamp.."
+  Logger -LogLevel Information 'RESTARTING Winamp..'
   $process = Get-Process 'winamp'
   $window.SendMessage($WM_USER, 0, 135) | Out-Null
   While (!$process.HasExited) {
-    start-sleep 1
+    Start-Sleep 1
   }
   $process = Get-Process 'winamp'
   Write-Host "old HWND: $($window.Hwnd)"
@@ -327,17 +327,17 @@ function Restart-Winamp {
 
   switch ($playStatus) {
     1 {
-      Logger -LogLevel Information "Pressing: Play"
-      $window.SendMessage($WM_COMMAND, 40045, 0) | Out-Null
+      Invoke-WinampPlay -Window $window | Out-Null
+      
       Logger -LogLevel Information "Seeking to previous pos: $seekPosMS ms"
       $window.SendMessage($WM_USER, $SeekPosMS, 106) | Out-Null
     }
     3 {
-      Logger -LogLevel Information "Pressing: Play"
+      Logger -LogLevel Information 'Pressing: Play'
       $window.SendMessage($WM_COMMAND, 40045, 0) | Out-Null
       Logger -LogLevel Information "Seeking to previous pos: $seekPosMS ms"
       $window.SendMessage($WM_USER, $SeekPosMS, 106) | Out-Null
-      Logger -LogLevel Information "Pressing: Pause"
+      Logger -LogLevel Information 'Pressing: Pause'
       $window.SendMessage($WM_COMMAND, 40046, 0) | Out-Null
     }
   }
@@ -357,13 +357,13 @@ $status = 'unknown'
 while ($true) {
   Start-Sleep -Seconds ([int]($FlushAfterSeconds / 5))
 
-  if (!(Get-Process "winamp" -ErrorAction SilentlyContinue)) {
+  if (!(Get-Process 'winamp' -ErrorAction SilentlyContinue)) {
     if ($status) {
-      Logger -LogLevel Information "Winamp not started."  
+      Logger -LogLevel Information 'Winamp not started.'  
       $status = $null
     }
     else {
-      Logger -LogLevel Verbose "Waiting for winamp to be started.."
+      Logger -LogLevel Verbose 'Waiting for winamp to be started..'
     }
     Continue
   }
@@ -377,7 +377,7 @@ while ($true) {
   $status = Get-WinampStatus -Window $window
 
   if ($status.playStatus -eq 1) {
-    Logger -LogLevel Verbose "Winamp currently playing, nothing to do."
+    Logger -LogLevel Verbose 'Winamp currently playing, nothing to do.'
     $PlayStoppedAt = $null
     Continue
   }
@@ -386,11 +386,11 @@ while ($true) {
   Logger -LogLevel Verbose "STATS: Start Time: $($status.StartTime).  Running for: $([int]${RunningForSeconds})s"
 
   if ($RestartedCheck -eq $status.statusCheck) {
-    Logger -LogLevel Verbose "Winamp already restarted, nothing to do for now."
+    Logger -LogLevel Verbose 'Winamp already restarted, nothing to do for now.'
     Continue
   }
   else {
-    Logger -LogLevel Verbose "RestartedCheck status changed:"
+    Logger -LogLevel Verbose 'RestartedCheck status changed:'
     Logger -LogLevel Verbose "RestartedCheck = $RestartedCheck; StatusCheck = $($status.statusCheck)"
   }
 
@@ -402,7 +402,7 @@ while ($true) {
   }
 
   if (!$PlayStoppedAt) {
-    Logger -LogLevel Information "Winamp is now stopped or paused; recording state st STOPPED."
+    Logger -LogLevel Information 'Winamp is now stopped or paused; recording state st STOPPED.'
     $PlayStoppedAt = Get-Date
     $PlayStoppedCheck = $status.statusCheck
     Continue

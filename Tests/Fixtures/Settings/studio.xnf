@@ -8,13 +8,15 @@
       <entry name="Bento_Component" value="Media Library" />
       <entry name="Bento_Component3" value="File Info" />
       <entry name="Bento_First Start" value="0" />
+      <entry name="Bento_Hidden Component" value="Media Library" />
       <entry name="Bento_Pledit_pos" value="top" />
       <entry name="Bento_Visualizer Mode" value="1" />
       <entry name="Bento_isMainWndMaximized" value="0" />
       <entry name="Bento_nomax_h" value="1181" />
-      <entry name="Bento_nomax_w" value="2048" />
-      <entry name="Bento_nomax_x" value="2729" />
-      <entry name="Bento_nomax_y" value="49" />
+      <entry name="Bento_nomax_w" value="1054" />
+      <entry name="Bento_nomax_x" value="321" />
+      <entry name="Bento_nomax_y" value="101" />
+      <entry name="Bento_nomax_y_h" value="139" />
       <entry name="Bento_playlist_cover_poppler" value="200" />
       <entry name="Bento_settings_last_pos" value="0" />
       <entry name="Bentoseperator1" value="-" />
@@ -34,6 +36,7 @@
       <entry name="Bentoseperator9" value="-" />
       <entry name="Crossfade time" value="0" />
       <entry name="Enable crossfading" value="0" />
+      <entry name="Enlarge Playlist" value="1" />
       <entry name="Fade In Effect" value="{D9891A39-7A38-45d8-9D51-A08F7270C836}" />
       <entry name="Fade Out Effect" value="{560EAE41-1379-4927-AC55-FB5F4D47C9B8}" />
       <entry name="File Info Components" value="{8D3829F9-5790-4c8e-9C3A-C397D3602FF9}" />
@@ -71,7 +74,7 @@
               <entry name="rect" value="0,0,1,1" />
               <entry name="restoredrect" value="0,0,1,1" />
               <entry name="sl" value="0" />
-              <entry name="sm" value="1.250000" />
+              <entry name="sm" value="1.500000" />
             </section>
           </section>
         </section>
@@ -87,10 +90,10 @@
               <entry name="maximized" value="0" />
               <entry name="odim" value="-2,-2" />
               <entry name="r" value="1.000000" />
-              <entry name="rect" value="2729,49,2048,1181" />
-              <entry name="restoredrect" value="2729,49,2048,1181" />
+              <entry name="rect" value="321,101,1054,1181" />
+              <entry name="restoredrect" value="321,101,1054,1181" />
               <entry name="sl" value="0" />
-              <entry name="sm" value="1.250000" />
+              <entry name="sm" value="1.500000" />
             </section>
             <section name="Layout:shade">
               <entry name="appbar" value="-1" />
@@ -102,10 +105,10 @@
               <entry name="maximized" value="0" />
               <entry name="odim" value="-2,-2" />
               <entry name="r" value="1.000000" />
-              <entry name="rect" value="2729,49,2048,18" />
-              <entry name="restoredrect" value="2729,49,2048,18" />
+              <entry name="rect" value="321,101,1054,18" />
+              <entry name="restoredrect" value="321,101,1054,18" />
               <entry name="sl" value="0" />
-              <entry name="sm" value="1.250000" />
+              <entry name="sm" value="1.500000" />
             </section>
           </section>
         </section>
@@ -122,10 +125,10 @@
               <entry name="maximized" value="0" />
               <entry name="odim" value="-2,-2" />
               <entry name="r" value="1.000000" />
-              <entry name="rect" value="4856,1308,262,80" />
-              <entry name="restoredrect" value="4856,1308,262,80" />
+              <entry name="rect" value="2296,1298,262,80" />
+              <entry name="restoredrect" value="2296,1298,262,80" />
               <entry name="sl" value="0" />
-              <entry name="sm" value="1.250000" />
+              <entry name="sm" value="1.500000" />
             </section>
             <section name="Layout:normal">
               <entry name="appbar" value="-1" />
@@ -140,7 +143,7 @@
               <entry name="rect" value="0,0,128,80" />
               <entry name="restoredrect" value="0,0,128,80" />
               <entry name="sl" value="0" />
-              <entry name="sm" value="1.250000" />
+              <entry name="sm" value="1.500000" />
             </section>
           </section>
         </section>
@@ -159,7 +162,7 @@
               <entry name="rect" value="0,0,320,200" />
               <entry name="restoredrect" value="0,0,320,200" />
               <entry name="sl" value="0" />
-              <entry name="sm" value="1.250000" />
+              <entry name="sm" value="1.500000" />
             </section>
           </section>
         </section>
