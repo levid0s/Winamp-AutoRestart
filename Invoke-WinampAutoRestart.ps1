@@ -1,5 +1,5 @@
 <#PSScriptInfo
-.VERSION      2023.03.30
+.VERSION      2023.04.07
 .AUTHOR       Levente Rog
 .COPYRIGHT    (c) 2023 Levente Rog
 .LICENSEURI   https://github.com/levid0s/Winamp-AutoRestart/blob/master/LICENSE.md
@@ -22,7 +22,7 @@
   The level of logging to write to the Log file. Default is 'Information'.
   Valid values are: 'Verbose', 'Debug', 'Information'
 
-  .PARAMETER Install [CurrentUser|AllUsers]
+  .PARAMETER Install [CurrentUser|GROUPS\AllUsers]
   Install the script as a Windows Scheduled Task, to run at startup.
   AllUsers requires the script to be run as Administrator (although the Scheduled task will be started as limited privileges, as `BUILTIN\Users`).
   A detailed Log file is written to `%TEMP%\Start-WinampAutoFlush.ps1-%TIMESTAMP%.log`
@@ -32,10 +32,10 @@
 #>
 
 param(
-  [int]$FlushAfterSeconds = 300,
-  [Parameter()][ValidateSet('Verbose', 'Debug', 'Information')][string]$LogLevel = 'Information',
-  [Parameter()][ValidateSet('CurrentUser', 'AllUsers')]$Install = $null,
-  [switch]$Uninstall
+  [Parameter(Position = 0, ParameterSetName = 'Default')][ValidateSet('CurrentUser', 'GROUPS\AllUsers')]$Install = $null,
+  [Parameter(Position = 1, ParameterSetName = 'Default')][int]$FlushAfterSeconds = 300,
+  [Parameter(Position = 2, ParameterSetName = 'Default')][ValidateSet('Verbose', 'Debug', 'Information')][string]$LogLevel = 'Information',
+  [Parameter(Position = 3, ParameterSetName = 'Uninstall')][switch]$Uninstall
 )
 
 . $PSScriptRoot/_Winamp-AutoRestartHelpers.ps1
@@ -56,203 +56,12 @@ $HaltScriptOnParentExit = { Start-Job -ScriptBlock {
     # Stop the PowerShell script
     # Append to the end of the logfile
     Stop-Transcript
+    # For some reason this never gets executed.
     'INFO: Parent process has exited. Stopping the script.' >> $LogPath
     Stop-Process $ScriptPid
   } -ArgumentList $pid, $LogPath | Out-Null
 }
 &$HaltScriptOnParentExit
-
-###
-#Region Register-PowerShellScheduledTask
-###
-
-function Register-PowerShellScheduledTask {
-  <#
-  .VERSION 20230331
-
-  .SYNOPSIS
-  Registers a PowerShell script as a **Hidden** Scheduled Task.
-  At the moment the schedule frequency is hardcoded to every 15 minutes.
-
-  .DESCRIPTION
-  Currently, it's not possible create a hidden Scheduled Task that executes a PowerShell task.
-  A command window will keep popping up every time the task is run.
-  This function creates a wrapper vbs script that runs the PowerShell script as hidden.
-  source: https://github.com/PowerShell/PowerShell/issues/3028
-
-  .PARAMETER ScriptPath
-  The path to the PowerShell script that will be executed in the task.
-
-  .PARAMETER Parameters
-  A hashtable of parameters to pass to the script.
-
-  .PARAMETER TaskName
-  The Scheduled Task will be registered under this name in the Task Scheduler.
-  If not specified, the script name will be used.
-
-  .PARAMETER AllowRunningOnBatteries
-  Allows the task to run when the computer is on batteries.
-
-  .PARAMETER Uninstall
-  Unregister the Scheduled Task.
-
-  .PARAMETER ExecutionTimeLimit
-  The maximum amount of time the task is allowed to run.
-  New-TimeSpan -Hours 72
-  New-TimeSpan -Minutes 15
-  New-TimeSpan -Seconds 30
-  New-TimeSpan -Seconds 0 = Means disabled
-
-  .PARAMETER AsAdmin
-  Run the Scheduled Task as administrator.
-
-  .PARAMETER GroupId
-  The Scheduled Task will be registered under this group in the Task Scheduler.
-  Eg: "BUILTIN\Administrators"
-
-  .PARAMETER TimeInterval
-  The Scheduled Task will be run every X minutes.
-
-  .PARAMETER AtLogon
-  The Scheduled Task will be run at user logon.
-
-  .PARAMETER AtStartup
-  The Scheduled Task will be run at system startup. Requires admin rights.
-  #>
-
-  param(
-    [Parameter(Mandatory = $true)]$ScriptPath,
-    [hashtable]$Parameters = @{},
-    [string]$TaskName,
-    [bool]$AllowRunningOnBatteries,
-    [switch]$DisallowHardTerminate,
-    [TimeSpan]$ExecutionTimeLimit,
-    [int]$TimeInterval,
-    [switch]$AtLogon,
-    [switch]$AtStartup,
-    [string]$GroupId,
-    [switch]$AsAdmin,
-    [switch]$Uninstall
-  )
-
-  if ([string]::IsNullOrEmpty($TaskName)) {
-    $TaskName = Split-Path $ScriptPath -Leaf
-  }
-
-  ## Uninstall
-  if ($Uninstall) {
-    Stop-ScheduledTask -TaskName $TaskName
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-    return
-  }
-
-  ## Install
-  if (!(Test-Path $ScriptPath)) {
-    Throw "Script ``$ScriptPath`` not found!"
-  }
-  $ScriptPath = Resolve-Path -LiteralPath $ScriptPath
-
-  # Create wrapper vbs script so we can run the PowerShell script as hidden
-  # https://github.com/PowerShell/PowerShell/issues/3028
-  if ($GroupId) {
-    $vbsPath = "$env:ALLUSERSPROFILE\PsScheduledTasks\$TaskName.vbs"
-  }
-  else {
-    $vbsPath = "$env:LOCALAPPDATA\PsScheduledTasks\$TaskName.vbs"
-  }
-  $vbsDir = Split-Path $vbsPath -Parent
-
-  if (!(Test-Path $vbsDir)) {
-    New-Item -ItemType Directory -Path $vbsDir
-  }
-
-  $ps = @(); $Parameters.GetEnumerator() | ForEach-Object { $ps += "-$($_.Name) $($_.Value)" }; $ps -join ' '
-  $vbsScript = @"
-Dim shell,command
-command = "powershell.exe -nologo -File $ScriptPath $ps"
-Set shell = CreateObject("WScript.Shell")
-shell.Run command, 0, true
-"@
-
-  Set-Content -Path $vbsPath -Value $vbsScript -Force
-
-  Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue -OutVariable TaskExists
-  if ($TaskExists.State -eq 'Running') {
-    Write-Debug "Stopping task for update: $TaskName"
-    $TaskExists | Stop-ScheduledTask
-  }
-  $action = New-ScheduledTaskAction -Execute $vbsPath
-  
-  ## Schedule
-  $triggers = @()
-  if ($TimeInterval) {
-    $t1 = New-ScheduledTaskTrigger -Daily -At 00:05
-    $t2 = New-ScheduledTaskTrigger -Once -At 00:05 `
-      -RepetitionInterval (New-TimeSpan -Minutes $TimeInterval) `
-      -RepetitionDuration (New-TimeSpan -Hours 23 -Minutes 55)
-    $t1.Repetition = $t2.Repetition
-    $t1.Repetition.StopAtDurationEnd = $false
-    $triggers += $t1
-  }
-  if ($AtLogOn) {
-    $triggers += New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-  }
-  if ($AtStartUp) {
-    $triggers += New-ScheduledTaskTrigger -AtStartup
-  }
-    
-  ## Additional Options
-  $AdditionalOptions = @{}
-
-  if ($AsAdmin) {
-    $AdditionalOptions.RunLevel = 'Highest'
-  }
-
-  if ($GroupId) {
-    $STPrin = New-ScheduledTaskPrincipal -GroupId $GroupId
-    $AdditionalOptions.Principal = $STPrin
-  }
-  
-  ## Settings 
-  $AdditionalSettings = @{}
-
-  if ($AllowRunningOnBatteries -eq $true) {
-    $AdditionalSettings.AllowStartIfOnBatteries = $true
-    $AdditionalSettings.DontStopIfGoingOnBatteries = $true
-  }
-  elseif ($AllowRunningOnBatteries -eq $false) {
-    $AdditionalSettings.AllowStartIfOnBatteries = $false
-    $AdditionalSettings.DontStopIfGoingOnBatteries = $false
-  }
-
-  if ($DisallowHardTerminate) {
-    $AdditionalSettings.DisallowHardTerminate = $true
-  }
-
-  if ($ExecutionTimeLimit) {
-    $AdditionalSettings.ExecutionTimeLimit = $ExecutionTimeLimit
-  }
-
-
-  $STSet = New-ScheduledTaskSettingsSet `
-    -MultipleInstances IgnoreNew `
-    @AdditionalSettings
-
-  ## Decide if Register or Update
-  if (!$TaskExists) {
-    $cim = Register-ScheduledTask -Action $action -Trigger $triggers -TaskName $TaskName -Description "Scheduled Task for running $ScriptPath" -Settings $STSet @AdditionalOptions
-  }
-  else {
-    $cim = Set-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers -Settings $STSet @AdditionalOptions
-  }
-  
-  return $cim
-}
-
-
-###
-#Endregion
-###
 
 $LogLevels = @{
   'Error'       = 1
@@ -270,16 +79,24 @@ switch ($LogLevelv) {
   { $_ -ge 5 } { $VerbosePreference = 'Continue' }
 }
 
+####
+#Region Install
+####
+
+if ($Install -and $Uninstall) {
+  Throw 
+}
+
 if ($Install) {
   $ps = @{
     FlushAfterSeconds = $FlushAfterSeconds
     LogLevel          = $LogLevel
   }
   $SchTaskGroupSett = @{}
-  if ($Install -eq 'AllUsers') {
+  if ($Install -eq 'GROUPS\AllUsers') {
     $SchTaskGroupSett.GroupId = 'BUILTIN\Users'
   }
-
+  Logger -LogLevel Information 'Installing Scheduled Task..'
   $job = Register-PowerShellScheduledTask `
     -ScriptPath $MyScript `
     -AllowRunningOnBatteries $true `
@@ -287,79 +104,38 @@ if ($Install) {
     -Parameters $ps `
     -ExecutionTimeLimit (New-TimeSpan -Seconds 0) `
     -AtLogon
-  Start-ScheduledTask $job.TaskName
+  $TaskName = ($job | Select-Object -Last 1 -ExpandProperty TaskName)
+  Logger -LogLevel Information "Starting Scheduled Task: $TaskName"
+  Start-ScheduledTask $TaskName
   return
 }
 
 if ($Uninstall) {
-  Register-PowerShellScheduledTask -ScriptPath $MyScript -Uninstall
+  Logger -LogLevel Information 'Uninstalling Scheduled Task..'
+  Register-PowerShellScheduledTask -ScriptPath $MyScript -Uninstall | Out-Null
   return
 }
+
+####
+#Endregion
+####
 
 Start-Transcript -Path $LogPath -Append
 Logger -LogLevel Information -Message "Starting WinampAutoFlush. LogLevel: $LogLevel"
 Logger -LogLevel Information -Message "Winamp will be restarted after $FlushAfterSeconds seconds of inactivity."
 
-function Restart-Winamp {
-  # https://forums.winamp.com/forum/developer-center/winamp-development/156726-winamp-application-programming-interface?postid=1953663
-  param(
-    [Parameter(Mandatory = $true)]$Window
-  )
-
-  $WM_COMMAND = 0x0111
-  $WM_USER = 0x0400
-
-  $playStatus = $window.SendMessage($WM_USER, 0, 104) # 0: stopped, 1: playing, 3: paused
-  $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
-  Logger -LogLevel Debug "Winamp: hWnd: $($window.hWnd), PlayStatus: $playStatus, SeekPos: $SeekPosMS"
-  Logger -LogLevel Information 'RESTARTING Winamp..'
-  $process = Get-Process 'winamp'
-  $window.SendMessage($WM_USER, 0, 135) | Out-Null
-  While (!$process.HasExited) {
-    Start-Sleep 1
-  }
-  $process = Get-Process 'winamp'
-  Write-Host "old HWND: $($window.Hwnd)"
-  $window = Wait-WinampInit
-  Write-Host "new HWND: $($window.Hwnd)"
-
-  Logger -LogLevel Information "Winamp restarted: hWnd: $($window.hWnd), PlayStatus: $playStatus, SeekPos: $SeekPosMS"
-
-  switch ($playStatus) {
-    1 {
-      Invoke-WinampPlay -Window $window | Out-Null
-      
-      Logger -LogLevel Information "Seeking to previous pos: $seekPosMS ms"
-      $window.SendMessage($WM_USER, $SeekPosMS, 106) | Out-Null
-    }
-    3 {
-      Logger -LogLevel Information 'Pressing: Play'
-      $window.SendMessage($WM_COMMAND, 40045, 0) | Out-Null
-      Logger -LogLevel Information "Seeking to previous pos: $seekPosMS ms"
-      $window.SendMessage($WM_USER, $SeekPosMS, 106) | Out-Null
-      Logger -LogLevel Information 'Pressing: Pause'
-      $window.SendMessage($WM_COMMAND, 40046, 0) | Out-Null
-    }
-  }
-
-  return $window
-}
-
-
-$RestartedCheck = $null
-$PlayStoppedAt = $null
-$PlayStoppedCheck = $null
-
-Logger -LogLevel Debug "INIT: Winamp will be restarted after $FlushAfterSeconds seconds of inactivity."
-
+# $RestartedCheck = $null
+# $PlayStoppedAt = $null
+# $PlayStoppedCheck = $null
+$CheckpointPos = $null
 $status = 'unknown'
 
 while ($true) {
-  Start-Sleep -Seconds ([int]($FlushAfterSeconds / 5))
+  Start-Sleep -Seconds ([math]::Max(1, [int]($FlushAfterSeconds / 5)))
 
   if (!(Get-Process 'winamp' -ErrorAction SilentlyContinue)) {
     if ($status) {
-      Logger -LogLevel Information 'Winamp not started.'  
+      Logger -LogLevel Information 'Waiting for winamp to be started..'  
       $status = $null
     }
     else {
@@ -369,9 +145,15 @@ while ($true) {
   }
 
   if (!$status -or $status -eq 'unknown') {
-    # Winamp process now exists, but we don't have a $status yet.
-    # Waiting for Winamp to start up..
+
+    # Winamp is now started, but we don't have a $status yet.
+    # Wait for the API to become ready.
     $window = Wait-WinampInit
+    Logger -LogLevel Information 'Winamp started..'
+
+    # Register the current status as 'seen' so we don't restart until we have changes.
+    $status = Get-WinampStatus -Window $window
+    $RestartedCheck = $status.statusCheck
   }
 
   $status = Get-WinampStatus -Window $window
@@ -390,11 +172,10 @@ while ($true) {
     Continue
   }
   else {
-    Logger -LogLevel Verbose 'RestartedCheck status changed:'
-    Logger -LogLevel Verbose "RestartedCheck = $RestartedCheck; StatusCheck = $($status.statusCheck)"
+    Logger -LogLevel Verbose "RestartedCheck status changed: RestartedCheck = '$RestartedCheck'; StatusCheck = '$($status.statusCheck)'"
   }
 
-  if ($RunningForSeconds -lt $FlushAfterSeconds) {
+  if ($RunningForSeconds -lt [math]::Max(30, $FlushAfterSeconds)) {
     Logger -LogLevel Debug "Winamp started just recently ($RunningForSeconds seconds ago. Flush after: $FlushAfterSeconds). Recording state as RESTARTED. Nothing else to do."
     $RestartedCheck = $status.statusCheck
     Logger -LogLevel Verbose "Status check string: $($status.statusCheck)"

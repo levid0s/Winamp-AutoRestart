@@ -74,7 +74,7 @@
               <entry name="rect" value="0,0,1,1" />
               <entry name="restoredrect" value="0,0,1,1" />
               <entry name="sl" value="0" />
-              <entry name="sm" value="1.500000" />
+              <entry name="sm" value="1.250000" />
             </section>
           </section>
         </section>
@@ -93,7 +93,7 @@
               <entry name="rect" value="321,101,1054,1181" />
               <entry name="restoredrect" value="321,101,1054,1181" />
               <entry name="sl" value="0" />
-              <entry name="sm" value="1.500000" />
+              <entry name="sm" value="1.250000" />
             </section>
             <section name="Layout:shade">
               <entry name="appbar" value="-1" />
@@ -108,7 +108,7 @@
               <entry name="rect" value="321,101,1054,18" />
               <entry name="restoredrect" value="321,101,1054,18" />
               <entry name="sl" value="0" />
-              <entry name="sm" value="1.500000" />
+              <entry name="sm" value="1.250000" />
             </section>
           </section>
         </section>
@@ -125,10 +125,10 @@
               <entry name="maximized" value="0" />
               <entry name="odim" value="-2,-2" />
               <entry name="r" value="1.000000" />
-              <entry name="rect" value="2296,1298,262,80" />
-              <entry name="restoredrect" value="2296,1298,262,80" />
+              <entry name="rect" value="2296,1308,262,80" />
+              <entry name="restoredrect" value="2296,1308,262,80" />
               <entry name="sl" value="0" />
-              <entry name="sm" value="1.500000" />
+              <entry name="sm" value="1.250000" />
             </section>
             <section name="Layout:normal">
               <entry name="appbar" value="-1" />
@@ -143,7 +143,7 @@
               <entry name="rect" value="0,0,128,80" />
               <entry name="restoredrect" value="0,0,128,80" />
               <entry name="sl" value="0" />
-              <entry name="sm" value="1.500000" />
+              <entry name="sm" value="1.250000" />
             </section>
           </section>
         </section>
@@ -162,7 +162,7 @@
               <entry name="rect" value="0,0,320,200" />
               <entry name="restoredrect" value="0,0,320,200" />
               <entry name="sl" value="0" />
-              <entry name="sm" value="1.500000" />
+              <entry name="sm" value="1.250000" />
             </section>
           </section>
         </section>

@@ -27,6 +27,10 @@ Describe 'Test AutoRestart script' {
     $testScript.HasExited | Should -Be $false
   }
 
+  ####
+  #Region Direct copy to SchTask.Test
+  ####
+
   Context 'Test Winamp Behaviour' {
     BeforeAll {
       $testWinamp = Start-Process -FilePath $WinampPath -ArgumentList $TestPlaylist -WorkingDirectory "${PSScriptRoot}\Fixtures" -PassThru
@@ -100,14 +104,14 @@ Describe 'Test AutoRestart script' {
 
         It 'Playback seek position should be restored to: <SeekPosMS>' {
           Start-Sleep 1
-          [long]$SeekPosNew = $window.SendMessage($WM_USER, 0, 105)
+          $SeekPosNew = Get-WinampSeekPos -Window $window
           Write-Debug "SeekPosNew: $SeekPosNew"
           # Math Abs difference between the two should be less than 2 seconds:
           [Math]::Abs($SeekPosNew - $SeekPosMS) | Should -BeLessThan 2000  
         }
 
-        It 'Playpack status shoulde be PAUSED' {
-          $playStatus = $window.SendMessage($WM_USER, 0, 104)
+        It 'Playpack status should be PAUSED' {
+          $playStatus = Get-WinampPlayStatus -Window $window
           $playStatus | Should -Be 3
         }
 
@@ -118,7 +122,14 @@ Describe 'Test AutoRestart script' {
           $processTest.Id | Should -Be $newWinamp.Id
           $newWinamp.HasExited | Should -Be $false
         }
-  
+
+        It 'should NOT restart when song is playing' {
+          Invoke-WinampPlay -Window $window
+          Write-Debug "Waiting $MaxWait seconds.."
+          Start-Sleep -Seconds $MaxWait
+          $newWinamp.HasExited | Should -Be $false
+        }
+    
       }
     }
 
@@ -133,10 +144,13 @@ Describe 'Test AutoRestart script' {
     }
   }
 
+  ####
+  #Endregion
+  ####
+
   AfterAll {
     $testScript.Kill()
     $testScript.WaitForExit()
     $testScript.HasExited | Should -Be $true
-
   }
 }

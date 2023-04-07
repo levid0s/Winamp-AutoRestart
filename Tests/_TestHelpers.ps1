@@ -1,16 +1,17 @@
-. N:\src\useful\ps-winhelpers\_PS-WinHelpers.ps1
-. ../_Winamp-AutoRestartHelpers.ps1
+. "$PSScriptRoot/../../useful\ps-winhelpers\_PS-WinHelpers.ps1"
+. "$PSScriptRoot/../_Winamp-AutoRestartHelpers.ps1"
 
-$DebugPreference = "Continue"
-$InformationPreference = "Continue"
-$VerbosePreference = "Continue"
+$DebugPreference = 'Continue'
+$InformationPreference = 'Continue'
+$VerbosePreference = 'Continue'
 
 $PsShell = Get-Process -Id $PID | Select-Object -ExpandProperty Path
-$WinampPath = "N:\Tools\Winamp-58portable\winamp.exe"
+$WinampPath = 'N:\Tools\Winamp-58portable\winamp.exe'
 $TestFile = './Fixtures/5-minutes-of-silence.mp3' | Resolve-Path
 $TestPlaylist = './Fixtures/test.m3u'
 $ScriptPath = '../Invoke-WinampAutoRestart.ps1' | Resolve-Path
 $MaxTestFiles = 30
+
 
 ####
 #Region Create Test Playlist
@@ -50,18 +51,18 @@ Function Stop-TestWinamp {
 #Region Error Checking
 ####
 
-$process = Get-Process "winamp" -ErrorAction SilentlyContinue
+$process = Get-Process 'winamp' -ErrorAction SilentlyContinue
 if ($process) {
   $data = $process | Select-Object Id, Path
   Write-Information "$($data | Out-String)"
-  Throw "Winamp is already running and it must be closed before testing can start."
+  Throw 'Winamp is already running and it must be closed before testing can start.'
 }
 
-$process = Get-WmiObject Win32_Process | Where-Object Commandline -match "powershell.*[wW]inamp.*(?<!Tests).ps1"
+$process = Get-WmiObject Win32_Process | Where-Object Commandline -Match 'powershell.*[wW]inamp.*(?<!Tests).ps1'
 if ($process) {
   $data = $process | Select-Object ProcessId, CommandLine
   Write-Information "$($data | Out-String)"
-  Throw "WinampAutoRestart script is already running, please exit."
+  Throw 'WinampAutoRestart script is already running, please exit.'
 }
 
 ####
