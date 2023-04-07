@@ -43,7 +43,7 @@ param(
 $MyScript = $MyInvocation.MyCommand.Source
 $ScriptName = Split-Path $MyScript -Leaf
 $Timestamp = Get-Date -Format 'yyyMMdd-HHmmss'
-$LogPath = "$env:TEMP\${ScriptName}-$Timestamp.log"
+$LogPath = "$env:LOCALAPPDATA\Temp\${ScriptName}-$Timestamp.log"
 
 # End this PowerShell script if the parent process (Scheduled Task Job) has exited
 $HaltScriptOnParentExit = { Start-Job -ScriptBlock {
@@ -124,19 +124,17 @@ Start-Transcript -Path $LogPath -Append
 Logger -LogLevel Information -Message "Starting WinampAutoFlush. LogLevel: $LogLevel"
 Logger -LogLevel Information -Message "Winamp will be restarted after $FlushAfterSeconds seconds of inactivity."
 
-# $RestartedCheck = $null
-# $PlayStoppedAt = $null
-# $PlayStoppedCheck = $null
-$CheckpointPos = $null
-$status = 'unknown'
+$Checkpoint = @{}
+$Checkpoint.Fingerprint = 'unknown'
+$PlayStoppedAt = $null
 
 while ($true) {
   Start-Sleep -Seconds ([math]::Max(1, [int]($FlushAfterSeconds / 5)))
 
   if (!(Get-Process 'winamp' -ErrorAction SilentlyContinue)) {
-    if ($status) {
+    if ($Checkpoint.Fingerprint) {
       Logger -LogLevel Information 'Waiting for winamp to be started..'  
-      $status = $null
+      $Checkpoint.Fingerprint = $null
     }
     else {
       Logger -LogLevel Verbose 'Waiting for winamp to be started..'
@@ -144,7 +142,7 @@ while ($true) {
     Continue
   }
 
-  if (!$status -or $status -eq 'unknown') {
+  if (!$Checkpoint.Fingerprint -or $Checkpoint.Fingerprint -eq 'unknown') {
 
     # Winamp is now started, but we don't have a $status yet.
     # Wait for the API to become ready.
@@ -152,57 +150,46 @@ while ($true) {
     Logger -LogLevel Information 'Winamp started..'
 
     # Register the current status as 'seen' so we don't restart until we have changes.
-    $status = Get-WinampStatus -Window $window
-    $RestartedCheck = $status.statusCheck
+    $Checkpoint = Get-WinampStatus -Window $window
   }
 
-  $status = Get-WinampStatus -Window $window
+  $Current = Get-WinampStatus -Window $window
 
-  if ($status.playStatus -eq 1) {
+  if ($Current.playStatus -eq 1) {
     Logger -LogLevel Verbose 'Winamp currently playing, nothing to do.'
     $PlayStoppedAt = $null
     Continue
   }
 
-  $RunningForSeconds = ([TimeSpan]::Parse((Get-Date) - $status.StartTime)).TotalSeconds
-  Logger -LogLevel Verbose "STATS: Start Time: $($status.StartTime).  Running for: $([int]${RunningForSeconds})s"
+  $RunningForSeconds = ([TimeSpan]::Parse((Get-Date) - $Current.StartTime)).TotalSeconds
+  Logger -LogLevel Verbose "STATS: Start Time: $($Current.StartTime).  Running for: $(((Get-Date) - $Current.StartTime).ToString().Substring(0,8))"
+  if ($RunningForSeconds -lt [math]::Max(15, $FlushAfterSeconds)) {
+    Logger -LogLevel Verbose "Winamp started just recently, we'll leave it alone. Recording current state as checkpointed."
+    $Checkpoint = $Current.Clone()
+    Logger -LogLevel Verbose "Checkpoint fingerprint: $($Checkpoint.Fingerprint)"
+    Continue
+  }
+  Logger -LogLevel Verbose "FYI: Checkpoint.Fingerprint = '$($Checkpoint.Fingerprint)'; Current.Fingerprint = '$($Current.Fingerprint)'"
 
-  if ($RestartedCheck -eq $status.statusCheck) {
+  if ($Checkpoint.Fingerprint -eq $Current.Fingerprint) {
     Logger -LogLevel Verbose 'Winamp already restarted, nothing to do for now.'
     Continue
   }
   else {
-    Logger -LogLevel Verbose "RestartedCheck status changed: RestartedCheck = '$RestartedCheck'; StatusCheck = '$($status.statusCheck)'"
-  }
-
-  if ($RunningForSeconds -lt [math]::Max(30, $FlushAfterSeconds)) {
-    Logger -LogLevel Debug "Winamp started just recently ($RunningForSeconds seconds ago. Flush after: $FlushAfterSeconds). Recording state as RESTARTED. Nothing else to do."
-    $RestartedCheck = $status.statusCheck
-    Logger -LogLevel Verbose "Status check string: $($status.statusCheck)"
-    Continue
+    Logger -LogLevel Verbose "Winamp status changed: Checkpoint.Fingerprint = '$($Checkpoint.Fingerprint)'; Current.Fingerprint = '$($Current.Fingerprint)'"
   }
 
   if (!$PlayStoppedAt) {
-    Logger -LogLevel Information 'Winamp is now stopped or paused; recording state st STOPPED.'
     $PlayStoppedAt = Get-Date
-    $PlayStoppedCheck = $status.statusCheck
-    Continue
-  }
-
-  if ($PlayStoppedCheck -ne $status.statusCheck) {
-    Logger -LogLevel Information "Winamp's state has changed since the last check (even if it's currently stopped or paused). Resetting counter." 
-    $PlayStoppedAt = Get-Date
-    $PlayStoppedCheck = $status.statusCheck
-    Continue
   }
 
   $StoppedForSeconds = ([TimeSpan]::Parse((Get-Date) - $PlayStoppedAt)).TotalSeconds
   Logger -LogLevel Debug "Winamp stopped for $StoppedForSeconds seconds."
 
   if ($StoppedForSeconds -gt $FlushAfterSeconds) {
-    Logger -LogLevel Debug "Winamp stopped for $FlushAfterSeconds seconds, restarting."
+    Logger -LogLevel Debug "Winamp stopped for $StoppedForSeconds seconds, restarting."
     $window = Restart-Winamp -Window $window
-    $status = Get-WinampStatus -Window $window
-    $RestartedCheck = $status.statusCheck
+    Logger -LogLevel Information 'Winamp restarted..'
+    $Checkpoint = Get-WinampStatus -Window $window
   }
 }

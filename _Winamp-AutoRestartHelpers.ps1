@@ -86,14 +86,17 @@ function Get-WinampStatus {
   )
   $playStatus = Get-WinampPlayStatus -Window $Window
   $SeekPosMS = Get-WinampSeekPos -Window $Window
+  $PlaylistIndex = Get-WinampPlaylistIndex -Window $Window
 
-  $status = "$($window.hWnd); $playStatus; $SeekPosMS"
+  $fingerprint = "hWnd=$($window.hWnd);status=$playStatus;ix=$PlaylistIndex;seek=$SeekPosMS"
   return @{
     hWnd        = $window.hWnd
     PlayStatus  = $playStatus
     SeekPosMS   = $SeekPosMS
-    statusCheck = $status
+    Fingerprint = $fingerprint
     StartTime   = $window.Process.StartTime
+    Timestamp   = Get-Date
+    Tainted     = $false
   }
 }
 
@@ -221,6 +224,14 @@ function Set-WinampPlaylistIndex {
 
   Logger -LogLevel Information "Seeking to Playlist index: $($PlaylistIndex)"
   $result = $window.SendMessage($WM_USER, $PlaylistIndex - 1, 121)
+  return $result + 1
+}
+
+function Get-WinampPlaylistIndex {
+  param(
+    [Parameter(Mandatory = $true)]$Window
+  )
+  $result = $window.SendMessage($WM_USER, 0, 125)
   return $result
 }
 
