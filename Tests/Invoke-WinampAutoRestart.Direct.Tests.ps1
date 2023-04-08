@@ -2,9 +2,35 @@ BeforeAll {
   . $PSScriptRoot/_TestHelpers.ps1
 }
 
+Describe 'Basic Test' {
+  BeforeAll {
+    $Parameters = @(
+      '-nologo',
+      '-File',
+      "$ScriptPath"
+    )
+    $AutoRestartScript = Start-Process -FilePath $PsShell -ArgumentList $Parameters -WorkingDirectory "${PSScriptRoot}\Fixtures" -PassThru
+  }
+
+  It 'should start correctly' {
+    $AutoRestartScript.HasExited | Should -Be $false
+  }
+
+  It 'should wait for Winamp to start' {
+    Start-Sleep 2
+    $AutoRestartScript.HasExited | Should -Be $false
+  }
+
+  AfterAll {
+    $AutoRestartScript.Kill()
+    $AutoRestartScript.WaitForExit()
+    $AutoRestartScript.HasExited | Should -Be $true
+  }
+}
+
 Describe 'Test AutoRestart script' {
   BeforeAll {
-    $FlushAfterSeconds = 3
+    $FlushAfterSeconds = 1
     $MaxWait = $FlushAfterSeconds * 3 + 1
     $Parameters = @(
       '-nologo',
@@ -15,26 +41,28 @@ Describe 'Test AutoRestart script' {
       '-LogLevel',
       'Verbose'
     )
-    $testScript = Start-Process -FilePath $PsShell -ArgumentList $Parameters -WorkingDirectory "${PSScriptRoot}\Fixtures" -PassThru
+    $AutoRestartScript = Start-Process -FilePath $PsShell -ArgumentList $Parameters -WorkingDirectory "${PSScriptRoot}\Fixtures" -PassThru
   }
 
   It 'should start correctly' {
-    $testScript.HasExited | Should -Be $false
+    $AutoRestartScript.HasExited | Should -Be $false
   }
 
   It 'should wait for Winamp to start' {
     Start-Sleep 2
-    $testScript.HasExited | Should -Be $false
+    $AutoRestartScript.HasExited | Should -Be $false
   }
 
   ####
-  #Region Direct copy to SchTask.Test
+  #Region Direct copy TO: SchTask.Test
   ####
 
   Context 'Test Winamp Behaviour' {
     BeforeAll {
-      $testWinamp = Start-Process -FilePath $WinampPath -ArgumentList $TestPlaylist -WorkingDirectory "${PSScriptRoot}\Fixtures" -PassThru
-      Start-SleepUntilTrue -Condition { [long]$testWinamp.MainWindowHandle -gt 0 } -Seconds 30
+      $FixturesPath = "${PSScriptRoot}\Fixtures"
+
+      $WinampStaging = New-WinampStagingArea -FixturesPath $FixturesPath -TestMP3 $TestMP3
+      $testWinamp = Start-TestWinamp -WinampPath $WinampPath -WorkingDirectory $WinampStaging
       $window = Wait-WinampInit    
     }
 
@@ -44,7 +72,7 @@ Describe 'Test AutoRestart script' {
     }
 
     It 'hWnd should be retrievable using the WinAPI' {
-      $testWinamp = Get-Process 'winamp'
+      $testWinamp = Get-Process 'winamp' -ErrorAction Stop
       $window.hWnd | Should -Be $testWinamp.MainWindowHandle
     }
 
@@ -54,14 +82,11 @@ Describe 'Test AutoRestart script' {
       $testWinamp.HasExited | Should -Be $false
     }
 
-    Context 'Restarting Winamp when Paused: round <_>' -ForEach 1, 2, 3, 5, 6, 7 {
+    Context 'Restarting Winamp when Paused: round <_>/7' -ForEach 1, 2, 3, 5, 6, 7 {
       BeforeAll {
-        $oldWinamp = Get-Process 'winamp'
-        if (!$oldWinamp) {
-          Throw 'Winamp not running'
-        }
+        $oldWinamp = Get-Process 'winamp' -ErrorAction Stop
         $window = Wait-WinampInit
-        $RandomTrack = Get-Random -Minimum 1 -Maximum ($MaxTestFiles - 1)
+        $RandomTrack = Get-Random -Minimum 1 -Maximum 29
         Set-WinampPlaylistIndex -Window $window -PlaylistIndex $RandomTrack
         Invoke-WinampPause -Window $window
         $SeekPosMS = Get-WinampSeekPos -Window $window
@@ -89,9 +114,9 @@ Describe 'Test AutoRestart script' {
 
       Context 'Testing new Winamp instance' {
         BeforeAll {
-          $newWinamp = Get-Process 'winamp'
+          $newWinamp = Get-Process 'winamp' -ErrorAction Stop
           $window = Wait-WinampInit
-          Start-Sleep 2  
+          Start-Sleep 1
         }
 
         It 'new process should be different to the old one' {
@@ -118,7 +143,7 @@ Describe 'Test AutoRestart script' {
         It 'should NOT be restarted the second time' {
           Write-Debug "Waiting $MaxWait seconds.."
           Start-Sleep -Seconds $MaxWait
-          $processTest = Get-Process 'winamp'
+          $processTest = Get-Process 'winamp' -ErrorAction Stop
           $processTest.Id | Should -Be $newWinamp.Id
           $newWinamp.HasExited | Should -Be $false
         }
@@ -134,23 +159,18 @@ Describe 'Test AutoRestart script' {
     }
 
     AfterAll {
-      ## Stop Winamp
-      &$WinampPath /close
-      Start-SleepUntilTrue -Seconds 30 -Condition { $testWinamp.HasExited }
-      if (!$testWinamp.HasExited) {
-        $testWinamp.Kill()
-        $testWinamp.WaitForExit()
-      }  
+      Remove-WinampStagingArea -Path $WinampStaging
     }
   }
+
 
   ####
   #Endregion
   ####
 
   AfterAll {
-    $testScript.Kill()
-    $testScript.WaitForExit()
-    $testScript.HasExited | Should -Be $true
+    $AutoRestartScript.Kill()
+    $AutoRestartScript.WaitForExit()
+    $AutoRestartScript.HasExited | Should -Be $true
   }
 }

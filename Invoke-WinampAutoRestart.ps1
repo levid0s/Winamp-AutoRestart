@@ -31,6 +31,7 @@
   Remove the previously created Windows Scheduled Task
 #>
 
+[CmdletBinding(DefaultParameterSetName = 'Default')]
 param(
   [Parameter(Position = 0, ParameterSetName = 'Default')][ValidateSet('CurrentUser', 'GROUPS\AllUsers')]$Install = $null,
   [Parameter(Position = 1, ParameterSetName = 'Default')][int]$FlushAfterSeconds = 300,
