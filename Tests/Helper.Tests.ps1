@@ -9,7 +9,7 @@ BeforeAll {
   Write-Debug "TestDrive is: $TestDrive"
 
   $FixturesPath = "${PSScriptRoot}\Fixtures"
-  $WinampStaging = New-WinampStagingArea -TestDrive $TestDrive -FixturesPath $FixturesPath -TestMP3 $TestMP3
+  $WinampStaging = New-WinampStagingArea -FixturesPath $FixturesPath -TestMP3 $TestMP3
 }
 
 Describe 'Get-WinampSongRating' {
@@ -20,8 +20,7 @@ Describe 'Get-WinampSongRating' {
   Context 'Winamp running' {
     BeforeAll {
       $DelayMS = 500
-      $testWinamp = Start-TestWinamp -WinampPath $WinampPath -TestPlaylist "$WinampStaging\test.m3u" -WorkingDirectory $WinampStaging
-      Wait-WinampInit | Out-Null
+      $testWinamp = Start-TestWinamp -WinampPath $WinampPath -WorkingDirectory $WinampStaging -NoAPI
       [void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms')
     }
     
@@ -38,7 +37,7 @@ Describe 'Get-WinampSongRating' {
     }
 
     AfterAll {
-      Stop-TestWinamp
+      Remove-WinampStagingArea -Path $WinampStaging
     }
   }
 }

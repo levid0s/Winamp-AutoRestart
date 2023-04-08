@@ -74,6 +74,10 @@ function Wait-WinampInit {
       }
       catch {
       }
+      if ($process.HasExited) {
+        [System.Console]::Write(': failed!')
+        Throw 'Winamp exited unexpectedly.'
+      }
       Start-Sleep -Seconds 1
       [System.Console]::Write('.')
     }
@@ -83,12 +87,16 @@ function Wait-WinampInit {
   [System.Console]::Write('Waiting for the API to be ready.')
 
   do {
+    if ($process.HasExited) {
+      [System.Console]::Write(': failed!')
+      Throw 'Winamp exited unexpectedly.'
+    }
     $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
     [System.Console]::Write('.')
     Start-Sleep -Seconds 1
   } while (!([long]$SeekPosMS -gt 0))
   $Duration = (Get-Date) - $StartTime
-  [System.Console]::WriteLine(": ok ($SeekPosMS)")
+  [System.Console]::WriteLine(": ok (SeekPosMS:$SeekPosMS)")
   Logger -LogLevel Debug "Winamp API ready. SeekPosMS: $SeekPosMS. Duration: $Duration"
   return $window | Where-Object ClassName -EQ 'Winamp v1.x' 
 }
@@ -168,12 +176,17 @@ function Get-WinampSeekPos {
   # } -Check {
   #   $result -gt 0 ## Not implemented yet in ExponentialBackoff
   # }
-  [long]$SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
-  while ($SeekPosMS -eq 0) {
-    Start-Sleep 1
-    $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
-  }
-  return $SeekPosMS
+  # [long]$SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
+  # while ($SeekPosMS -eq 0) {
+  #   Start-Sleep 1
+  #   $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
+  # }
+
+  $SeekPosMS = ExponentialBackoff `
+    -Do { $window.SendMessage($WM_USER, 0, 105) } `
+    -Check { [long]$DoResult -gt 0 }
+
+  return [long]$SeekPosMS.DoResult
 }
 
 function Get-WinampPlayStatus {
@@ -183,7 +196,7 @@ function Get-WinampPlayStatus {
   param(
     [Parameter(Mandatory = $true)]$Window
   )
-  $playStatus = $window.SendMessage($WM_USER, 0, 104) # 0: stopped, 1: playing, 3: paused
+  $playStatus = $window.SendMessage($WM_USER, 0, 104)
   return $playStatus
 }
 
@@ -193,11 +206,11 @@ function Invoke-WinampPause {
   )
   Logger -LogLevel Information 'Pressing: PLAY'
   
-  $result = ExponentialBackoff -Rounds 3 -InitialDelayMs 100 `
+  $result = ExponentialBackoff `
     -Do { $window.SendMessage($WM_COMMAND, 40046, 0) } `
-    -Check { (Get-WinampStatus -Window $Window).PlayStatus -eq 3 }
+    -Check { (Get-WinampPlayStatus -Window $Window) -eq 3 }
 
-  return $result
+  return $result.CheckResult
 }
 
 function Invoke-WinampPlay {
@@ -205,19 +218,11 @@ function Invoke-WinampPlay {
     [Parameter(Mandatory = $true)]$Window
   )
   Logger -LogLevel Information 'Pressing: PAUSE'
-  $result = ExponentialBackoff -Rounds 3 -InitialDelayMs 100 -Do {
-    $window.SendMessage($WM_COMMAND, 40045, 0)
-  } -Check {
-    (Get-WinampStatus -Window $Window).PlayStatus -eq 1
-  }
-  # $result = $window.SendMessage($WM_COMMAND, 40045, 0)
-  # $status = Get-WinampStatus -Window $Window
-  # if ($status.PlayStatus -ne 1) {
-  #   Start-Sleep -Milliseconds 100
-  #   Logger -LogLevel Information 'Play failed. Retrying..'
-  #   $result = $window.SendMessage($WM_COMMAND, 40045, 0)
-  # }
-  return $result
+  $result = ExponentialBackoff `
+    -Do { $window.SendMessage($WM_COMMAND, 40045, 0) } `
+    -Check { (Get-WinampPlayStatus -Window $Window) -eq 1 }
+  
+  return $result.CheckResult
 }
 
 function Invoke-WinampRestart {
@@ -232,12 +237,15 @@ function Invoke-WinampRestart {
 function Set-WinampPlaylistIndex {
   param(
     [Parameter(Mandatory = $true)]$Window,
-    [Parameter(Mandatory = $true)][int]$PlaylistIndex
+    [Parameter(Mandatory = $true)][int]$PlaylistIndex # Starts at 1
   )
 
   Logger -LogLevel Information "Seeking to Playlist index: $($PlaylistIndex)"
-  $result = $window.SendMessage($WM_USER, $PlaylistIndex - 1, 121)
-  return $result + 1
+  $result = ExponentialBackoff `
+    -Do { $window.SendMessage($WM_USER, $PlaylistIndex - 1, 121) } `
+    -Check { (Get-WinampPlaylistIndex -Window $Window) -eq $PlaylistIndex }
+
+  return $result.DoResult + 1
 }
 
 function Get-WinampPlaylistIndex {
@@ -245,7 +253,7 @@ function Get-WinampPlaylistIndex {
     [Parameter(Mandatory = $true)]$Window
   )
   $result = $window.SendMessage($WM_USER, 0, 125)
-  return $result
+  return $result + 1
 }
 
 function Set-WinampSeekPos {
@@ -254,18 +262,11 @@ function Set-WinampSeekPos {
     [Parameter(Mandatory = $true)][long]$SeekPosMS
   )
   Logger -LogLevel Information "Seeking track to time(ms): $($SeekPosMS)"
-  $ExpBackoffRounds = 3
-  $ExpBackoffDelay = 100
-  ExponentialBackoff -Rounds $ExpBackoffRounds -InitialDelayMs $ExpBackoffDelay `
-    -Do {
-    $result = $window.SendMessage($WM_USER, $SeekPosMS, 106)
-  } `
-    -Check {
-    [long]$test = Get-WinampSeekPos -Window $Window;
-    ([Math]::Abs($SeekPosMS - $test) -lt 2000)
-  }
+  $result = ExponentialBackoff `
+    -Do { $window.SendMessage($WM_USER, $SeekPosMS, 106) } `
+    -Check { [long]$test = Get-WinampSeekPos -Window $Window; ([Math]::Abs($SeekPosMS - $test) -lt 2000) }
 
-  return $result
+  return $result.CheckResult
 }
 
 function Get-WinampSongRating {
@@ -290,30 +291,50 @@ function Get-WinampSongRating {
 }
 
 Function ExponentialBackoff {
+  <#
+  .VERSION 20230408
+  #>
   param(
-    [int]$Rounds = 3,
+    [int]$Rounds = 5,
     [int]$InitialDelayMs = 100,
-    [scriptblock]$Do,
-    [scriptblock]$Check
+    [scriptblock]$Do = {},
+    [scriptblock]$Check = {}
   )
+
+  $CheckResult = $null
 
   for ($round = 1; $round -le $rounds; $round++) {
     if ($round -gt 1) {
-      Write-Debug "Operatoin failed, retrying with exponential backoff, round $round. Sleeping for $InitialDelayMs ms.."
+      Write-Verbose "Check condition not met, retrying with exponential backoff, round $round. Sleeping for $InitialDelayMs ms.."
       Start-Sleep -Milliseconds $InitialDelayMs  
       $InitialDelayMs *= 2
     }
     try {
-      $result = & $Do
+      $DoResult = & $Do
+      $DoSuccess = $true
     }
     catch {
+      $DoSuccess = $false
     }
 
-    if (& $Check) {
-      Write-Debug 'Check returned true, exiting.'
-      break
+    # If a Check block was provided, success depends if the Check block returns $true.
+    if ($Check.ToString()) {
+      $CheckResult = & $Check
+      if (!$CheckResult) {
+        Continue
+      }
     }
+    else {
+      # If no Check block was provided, success depends if the Do block doesn't throw an error.
+      if (!$DoSuccess) {
+        Continue
+      }
+    }
+
+    Write-Verbose 'Check condition met, exiting loop.'
+    return @{DoResult = $DoResult; CheckResult = $CheckResult }
   }
+  Throw "Check condition not met after $Rounds rounds."
 }
 
 #######

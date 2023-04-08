@@ -1,3 +1,14 @@
+BeforeDiscovery {
+  try {
+    # Stop all accidentally started trasncripts that were trieggered by running Invoke-WinampAutoRestart.ps1 directly.
+    while ($true) {
+      Stop-Transcript -ErrorAction SilentlyContinue
+    }
+  }
+  catch {
+  }
+}
+
 BeforeAll {
   . $PSScriptRoot/_TestHelpers.ps1
   $TaskName = Split-Path $ScriptPath -Leaf
@@ -12,7 +23,7 @@ Describe 'Testing Scheduled Task install' {
     $TaskName = Split-Path $ScriptPath -Leaf
     $LogDir = "$env:LOCALAPPDATA\Temp"
     $LogLevel = 'Verbose'
-    $FlushAfterSeconds = 3
+    $FlushAfterSeconds = 1
     $MaxWait = $FlushAfterSeconds * 3 + 1
     $Parameters = @(
       '-nologo',
@@ -26,21 +37,21 @@ Describe 'Testing Scheduled Task install' {
     )
   
     # Start Script
-    $testScript = Start-Process -FilePath $PsShell -ArgumentList $Parameters -WorkingDirectory "${PSScriptRoot}\Fixtures" -PassThru -NoNewWindow -Wait
+    $AutoRestartScript = Start-Process -FilePath $PsShell -ArgumentList $Parameters -PassThru -NoNewWindow -Wait -ErrorAction Stop
   }
 
   It 'Process should exit with code 0' {
-    $testScript.ExitCode | Should -Be 0
+    $AutoRestartScript.ExitCode | Should -Be 0
   }
 
   It 'Should install the scheduled task' {
-    $st = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    $st = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
     $st | Should -Not -BeNullOrEmpty
     $st.State | Should -Be 'Running'
   }
 
   It 'Parameters should be correct' {
-    $st = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    $st = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
     $vbsPath = $st.Actions[0].Execute
     $vbs = Get-Content $vbsPath
     Select-String -InputObject $vbs -SimpleMatch "-LogLevel $LogLevel" | Should -Not -BeNullOrEmpty
@@ -61,20 +72,25 @@ Describe 'Testing Scheduled Task install' {
       $snapshot1 = (Get-Content $LogFile).Count
       Start-SleepUntilTrue -Condition { $snapshot1 -ne (Get-Content $LogFile).Count } -Seconds $FlushAfterSeconds * 10
       $snapshot2 = (Get-Content $LogFile).Count
+      if ($snapshot1 -eq $snapshot2) {
+        Write-Debug "Log file: $LogFile"
+      }
       $snapshot1 | Should -Not -Be $snapshot2
     }
   }
 
 
   ####
-  #Region Direct copy from Invoke-WinampAutoRestart.Tests.ps1
+  #Region Direct copy FROM: Invoke-WinampAutoRestart.Direct.Tests.ps1
   ####
 
 
   Context 'Test Winamp Behaviour' {
     BeforeAll {
-      $testWinamp = Start-Process -FilePath $WinampPath -ArgumentList $TestPlaylist -WorkingDirectory "${PSScriptRoot}\Fixtures" -PassThru
-      Start-SleepUntilTrue -Condition { [long]$testWinamp.MainWindowHandle -gt 0 } -Seconds 30
+      $FixturesPath = "${PSScriptRoot}\Fixtures"
+
+      $WinampStaging = New-WinampStagingArea -FixturesPath $FixturesPath -TestMP3 $TestMP3
+      $testWinamp = Start-TestWinamp -WinampPath $WinampPath -WorkingDirectory $WinampStaging
       $window = Wait-WinampInit    
     }
 
@@ -84,7 +100,7 @@ Describe 'Testing Scheduled Task install' {
     }
 
     It 'hWnd should be retrievable using the WinAPI' {
-      $testWinamp = Get-Process 'winamp'
+      $testWinamp = Get-Process 'winamp' -ErrorAction Stop
       $window.hWnd | Should -Be $testWinamp.MainWindowHandle
     }
 
@@ -94,14 +110,11 @@ Describe 'Testing Scheduled Task install' {
       $testWinamp.HasExited | Should -Be $false
     }
 
-    Context 'Restarting Winamp when Paused: round <_>' -ForEach 1, 2, 3, 5, 6, 7 {
+    Context 'Restarting Winamp when Paused: round <_>/7' -ForEach 1, 2, 3, 5, 6, 7 {
       BeforeAll {
-        $oldWinamp = Get-Process 'winamp'
-        if (!$oldWinamp) {
-          Throw 'Winamp not running'
-        }
+        $oldWinamp = Get-Process 'winamp' -ErrorAction Stop
         $window = Wait-WinampInit
-        $RandomTrack = Get-Random -Minimum 1 -Maximum ($MaxTestFiles - 1)
+        $RandomTrack = Get-Random -Minimum 1 -Maximum 29
         Set-WinampPlaylistIndex -Window $window -PlaylistIndex $RandomTrack
         Invoke-WinampPause -Window $window
         $SeekPosMS = Get-WinampSeekPos -Window $window
@@ -129,9 +142,9 @@ Describe 'Testing Scheduled Task install' {
 
       Context 'Testing new Winamp instance' {
         BeforeAll {
-          $newWinamp = Get-Process 'winamp'
+          $newWinamp = Get-Process 'winamp' -ErrorAction Stop
           $window = Wait-WinampInit
-          Start-Sleep 2  
+          Start-Sleep 1
         }
 
         It 'new process should be different to the old one' {
@@ -158,7 +171,7 @@ Describe 'Testing Scheduled Task install' {
         It 'should NOT be restarted the second time' {
           Write-Debug "Waiting $MaxWait seconds.."
           Start-Sleep -Seconds $MaxWait
-          $processTest = Get-Process 'winamp'
+          $processTest = Get-Process 'winamp' -ErrorAction Stop
           $processTest.Id | Should -Be $newWinamp.Id
           $newWinamp.HasExited | Should -Be $false
         }
@@ -174,13 +187,7 @@ Describe 'Testing Scheduled Task install' {
     }
 
     AfterAll {
-      ## Stop Winamp
-      &$WinampPath /close
-      Start-SleepUntilTrue -Seconds 30 -Condition { $testWinamp.HasExited }
-      if (!$testWinamp.HasExited) {
-        $testWinamp.Kill()
-        $testWinamp.WaitForExit()
-      }  
+      Remove-WinampStagingArea -Path $WinampStaging
     }
   }
 
@@ -201,15 +208,15 @@ Describe 'Testing Scheduled Task install' {
     Write-Debug 'Waiting for the PowerShell script to start..'
     Start-ScheduledTask -TaskName $TaskName
     Start-SleepUntilTrue -Seconds 30 -Condition { Get-WmiObject Win32_Process | Where-Object { $_.Commandline -Like "*$TaskName*" -and $_.CommandLine -NotLike "*$env:LOCALAPPDATA\Temp\*.log*" } } | Out-Null
-    Start-Sleep 2
+    Start-Sleep 1 # lowered from 2 to 1
     $Parameters = @(
       '-nologo',
       '-File',
       "$ScriptPath",
       '-Uninstall'
     )
-    $testScript = Start-Process -FilePath $PsShell -ArgumentList $Parameters -WorkingDirectory "${PSScriptRoot}\Fixtures" -PassThru -NoNewWindow -Wait
-    $testScript.ExitCode | Should -Be 0
+    $AutoRestartScript = Start-Process -FilePath $PsShell -ArgumentList $Parameters -WorkingDirectory "${PSScriptRoot}\Fixtures" -PassThru -NoNewWindow -Wait
+    $AutoRestartScript.ExitCode | Should -Be 0
     $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
     $task | Should -BeNullOrEmpty
   }
