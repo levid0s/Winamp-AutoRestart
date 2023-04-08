@@ -2,6 +2,32 @@ BeforeAll {
   . $PSScriptRoot/_TestHelpers.ps1
 }
 
+Describe 'Basic Test' {
+  BeforeAll {
+    $Parameters = @(
+      '-nologo',
+      '-File',
+      "$ScriptPath"
+    )
+    $testScript = Start-Process -FilePath $PsShell -ArgumentList $Parameters -WorkingDirectory "${PSScriptRoot}\Fixtures" -PassThru
+  }
+
+  It 'should start correctly' {
+    $testScript.HasExited | Should -Be $false
+  }
+
+  It 'should wait for Winamp to start' {
+    Start-Sleep 2
+    $testScript.HasExited | Should -Be $false
+  }
+
+  AfterAll {
+    $testScript.Kill()
+    $testScript.WaitForExit()
+    $testScript.HasExited | Should -Be $true
+  }
+}
+
 Describe 'Test AutoRestart script' {
   BeforeAll {
     $FlushAfterSeconds = 3

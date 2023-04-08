@@ -3,7 +3,7 @@ $WM_USER = 0x0400
 
 function Logger {
   param(
-    [Parameter()][ValidateSet('Information', 'Debug', 'Verbose')][string]$LogLevel,
+    [Parameter()][ValidateSet('Error', 'Warning', 'Information', 'Debug', 'Verbose')][string]$LogLevel,
     [Parameter(Mandatory)][string]$Message
   )
   $Timestamp = Get-Date -Format 'yyyMMdd-HHmmss'
@@ -20,7 +20,20 @@ function Logger {
     'Verbose' {
       Write-Verbose "${Timestamp}: $Message"
     }
+    'Error' {
+      Write-Error "${Timestamp}: $Message"
+    }
+    'Warning' {
+      Write-Warning "${Timestamp}: $Message"
+    }
   }
+}
+
+Function Get-Timestamp {
+  <#
+  .VERSION 20230407
+  #>
+  return Get-Date -Format 'yyyyMMdd-HHmmss'
 }
 
 function Wait-WinampInit {
@@ -255,6 +268,27 @@ function Set-WinampSeekPos {
   return $result
 }
 
+function Get-WinampSongRating {
+  $wpid = Get-Process winamp -ErrorAction SilentlyContinue
+  if (!$wpid) {
+    return $null
+  }
+  
+  $rating = $null
+  $wTitles = @()
+  [WinAPI]::GetProcessWindows($wpid.Id, [ref]$wTitles) | Out-Null
+
+  # There are two titles that contain the rating, but one is not instantly updated when the rating changes.
+  # The safest way to get the rating is (Get-Process winamp).MainWindowTitle but that's not available when the "Now playing notifier" pops up.
+  $search = $wTitles | Select-String '(★+)?\s*\-\s*Winamp' | Select-Object -Last 1
+  if (!$search) {
+    return 0
+  }
+
+  $rating = $search.Matches.Groups[1].Value
+  return $rating.Length
+}
+
 Function ExponentialBackoff {
   param(
     [int]$Rounds = 3,
@@ -481,6 +515,50 @@ shell.Run command, 0, true
 ###
 #Endregion
 ###
+
+###
+#Region GetWindowTiles
+###
+
+Add-Type -Language CSharp -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+
+public class WinAPI
+{
+    [DllImport("user32.dll")]
+    public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+
+    [DllImport("user32.dll")]
+    public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+
+    public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    public static bool GetProcessWindows(int processId, out string[] windowTitles)
+    {
+        var list = new System.Collections.Generic.List<string>();
+        EnumWindows((hWnd, lParam) =>
+        {
+            int pid = 0;
+            if (GetWindowThreadProcessId(hWnd, out pid) != 0 && pid == processId)
+            {
+                var titleBuilder = new StringBuilder(256);
+                GetWindowText(hWnd, titleBuilder, titleBuilder.Capacity);
+                list.Add(titleBuilder.ToString());
+            }
+            return true;
+        }, IntPtr.Zero);
+        windowTitles = list.ToArray();
+        return true;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
+}
+'@
+
+
 
 ###
 #Region Control-WinApps.ps1
