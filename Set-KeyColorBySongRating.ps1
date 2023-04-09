@@ -2,7 +2,7 @@
 .VERSION 20230409
 
 .SYNOPSIS
-Change set the colours on the F1 - F5 keys according to the current song's rating in Winamp.
+Change set the colours of the F1 - F5 keys according to the current song's rating in Winamp.
 
 .DESCRIPTION
 Script that checks Winamp song ratings, and sets the colours on the F1 - F5 keys, on a Logitech G815 keyboard.
@@ -12,7 +12,7 @@ Needs:
 * Winamp title format: `[%artist% - ]$if2(%title%,$filepart(%filename%))[  $repeat(★,%rating%) ]`
 
 .EXAMPLE
-.\Ratings-Set.ps1
+.\Set-KeyColorBySongRating.ps1
 DEBUG: Attempting to connect to named pipe: \\.\pipe\MyNamedPipe
 Rating: 5
 Rating: 4

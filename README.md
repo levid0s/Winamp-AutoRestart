@@ -28,3 +28,22 @@ Invoke-WinampAutoRestart.ps1
 ```
 Invoke-WinampAutoRestart.ps1 -FlushAfterSeconds 10 -LogLevel Verbose
 ```
+
+## Set-KeyColorBySongRating
+
+Script that changes the colours of the F1 - F5 keys, according to the current song's rating in Winamp.
+
+**Needs:**
+* Logitech G LightSync keyboard
+* https://github.com/levid0s/Logi-SetRGB
+* Winamp title format: `[%artist% - ]$if2(%title%,$filepart(%filename%))[  $repeat(★,%rating%) ]`
+
+## Usage
+
+```
+.\Set-KeyColorBySongRating.ps1
+
+DEBUG: Attempting to connect to named pipe: \\.\pipe\MyNamedPipe
+Rating: 5
+Rating: 4
+```
