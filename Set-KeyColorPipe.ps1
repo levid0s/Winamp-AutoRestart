@@ -18,7 +18,13 @@ Rating: 5
 Rating: 4
 #>
 
-$LogiSetKeyPath = 'N:\src\Logi-SetRGB\Logi_SetTargetZone_Sample_CS\obj\x64\Debug\Logi_SetTargetZone_Sample_CS_old.exe'
+$LogiSetKeyPath = 'N:\src\Logi-SetRGB\Logi_SetTargetZone_Sample_CS\bin\x64\Debug\Logi_SetTargetZone_Sample_CS.exe'
+# Get process name of exe:
+$LogiSetKeyProcessName = Split-Path $LogiSetKeyPath -Leaf
+$LogiSetKeyProcessName = $LogiSetKeyProcessName -replace '\.[^.]*$'
+if (Get-Process $LogiSetKeyProcessName -ErrorAction SilentlyContinue) {
+  Throw "Process $LogiSetKeyProcessName is already running."
+}
 
 $LogiSetKey = Start-Process $LogiSetKeyPath -WindowStyle Minimized -PassThru
 
@@ -154,8 +160,8 @@ function Set-KeyColor {
 }
 
 $InformationPreference = 'Continue'
-$DebugPreference = 'SilentlyContinue'
-$VerbosePreference = 'SilentlyContinue'
+$DebugPreference = 'Continue'
+$VerbosePreference = 'Continue'
 
 $color_ON = [System.Drawing.ColorTranslator]::FromHtml('#FF0000')
 $color_OFF = [System.Drawing.ColorTranslator]::FromHtml('#000000')
@@ -175,40 +181,23 @@ try {
 
   $lastRating = $null
 
+  Write-Host 'Enter desired `key:colour`, eg: 0x3b:#FFFFFF'
   while ($true) {
-    if (!(Get-Process winamp -ErrorAction SilentlyContinue)) {
-      Start-Sleep -Seconds 10
+    $command = Read-Host
+
+    try {
+
+      if ($command -eq 'exit') {
+        break
+      }
+      $color = ($command -split ':')[1]
+      $color = [System.Drawing.ColorTranslator]::FromHtml($color)
+      $key = ($command -split ':')[0]
     }
-
-    Start-Sleep -Milliseconds 200
-
-    $rating = Get-WinampSongRating
-
-    if ($rating -eq $lastRating) {
-      continue
+    catch {
+      Write-Error "Error decoding command: $command"
     }
-    Write-Host "Rating: $rating"
-
-    switch ($true) {
-      { $rating -ge 1 } { Set-KeyColor -writer $writer -key $LOGI.F1 -color $color_ON }
-      { $rating -ge 2 } { Set-KeyColor -writer $writer -key $LOGI.F2 -color $color_ON }
-      { $rating -ge 3 } { Set-KeyColor -writer $writer -key $LOGI.F3 -color $color_ON }
-      { $rating -ge 4 } { Set-KeyColor -writer $writer -key $LOGI.F4 -color $color_ON }
-      { $rating -ge 5 } { Set-KeyColor -writer $writer -key $LOGI.F5 -color $color_ON }
-    }
-
-    switch ($true) {
-      { $rating -lt 5 } { Set-KeyColor -writer $writer -key $LOGI.F5 -color $color_OFF }
-      { $rating -lt 4 } { Set-KeyColor -writer $writer -key $LOGI.F4 -color $color_OFF }
-      { $rating -lt 3 } { Set-KeyColor -writer $writer -key $LOGI.F3 -color $color_OFF }
-      { $rating -lt 2 } { Set-KeyColor -writer $writer -key $LOGI.F2 -color $color_OFF }
-      { $rating -lt 1 } { Set-KeyColor -writer $writer -key $LOGI.F1 -color $color_OFF }
-    }
-
-    $lastRating = $rating
-  }
-  else {
-    Write-Host 'Connection attempt timed out.'
+    Set-KeyColor -writer $writer -key $key -color $color
   }
 }
 catch {

@@ -270,26 +270,39 @@ function Set-WinampSeekPos {
 }
 
 function Get-WinampSongRating {
+  <#
+  .VERSION 20230415
+  
+  .SYNOPSIS
+  Gets the rating of the currently playing song in Winamp.
+
+  .DESCRIPTION
+  The function counts the number of stars in the title of the Winamp window.
+  #>
+  
   $wpid = Get-Process winamp -ErrorAction SilentlyContinue
   if (!$wpid) {
+    Write-Debug 'Winamp not running.'
     return $null
   }
-  
+    
   $rating = $null
   $wTitles = @()
   [WinAPI]::GetProcessWindows($wpid.Id, [ref]$wTitles) | Out-Null
-
+  
   # There are two titles that contain the rating, but one is not instantly updated when the rating changes.
   # The safest way to get the rating is (Get-Process winamp).MainWindowTitle but that's not available when the "Now playing notifier" pops up.
-  $search = $wTitles | Select-String '(★+)?\s*\-\s*Winamp' | Select-Object -Last 1
+  $search = $wTitles | Select-String "($([char]0x2605)+)?\s*\-\s*Winamp" | Select-Object -Last 1
   if (!$search) {
-    return 0
+    Write-Debug 'Winamp song info not found in window titles.'
+    return $null
   }
-
-  $rating = $search.Matches.Groups[1].Value
-  return $rating.Length
+  Write-Debug "Search result: $($search.ToString())"
+  Write-Verbose "Search groups: $($search.Matches.Groups | Out-String)"
+  $rating = $search.Matches.Groups[1].Value.Length
+  return $rating
 }
-
+  
 Function ExponentialBackoff {
   <#
   .VERSION 20230408
@@ -548,10 +561,10 @@ using System.Runtime.InteropServices;
 
 public class WinAPI
 {
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     public static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
 
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
@@ -574,7 +587,7 @@ public class WinAPI
         return true;
     }
 
-    [DllImport("user32.dll", SetLastError = true)]
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
 }
 '@

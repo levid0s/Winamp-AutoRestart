@@ -5,6 +5,7 @@ BeforeDiscovery {
 
 BeforeAll {
   . $PSScriptRoot/_TestHelpers.ps1
+  $VerbosePreference = 'SilentlyContinue'
 
   Write-Debug "TestDrive is: $TestDrive"
 

@@ -18,7 +18,7 @@ Rating: 5
 Rating: 4
 #>
 
-$LogiSetKeyPath = 'N:\src\Logi-SetRGB\Logi_SetTargetZone_Sample_CS\obj\x64\Debug\Logi_SetTargetZone_Sample_CS_old.exe'
+$LogiSetKeyPath = 'N:\src\Logi-SetRGB\Logi_SetTargetZone_Sample_CS\bin\x64\Debug\Logi_SetTargetZone_Sample_CS.exe'
 
 $LogiSetKey = Start-Process $LogiSetKeyPath -WindowStyle Minimized -PassThru
 
@@ -180,7 +180,7 @@ try {
       Start-Sleep -Seconds 10
     }
 
-    Start-Sleep -Milliseconds 200
+    Start-Sleep -Seconds 1
 
     $rating = Get-WinampSongRating
 

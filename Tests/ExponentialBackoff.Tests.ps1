@@ -1,30 +1,6 @@
 BeforeAll {
-  Function ExponentialBackoff {
-    param(
-      [int]$Rounds = 3,
-      [int]$InitialDelayMs = 100,
-      [scriptblock]$Do,
-      [scriptblock]$Check
-    )
-
-    for ($round = 1; $round -le $rounds; $round++) {
-      if ($round -gt 1) {
-        Write-Debug "Operatoin failed, retrying with exponential backoff, round $round. Sleeping for $InitialDelayMs ms.."
-        Start-Sleep -Milliseconds $InitialDelayMs  
-        $InitialDelayMs *= 2
-      }
-      try {
-        $result = & $Do
-      }
-      catch {
-      }
-
-      if (& $Check) {
-        Write-Debug 'Check returned true, exiting.'
-        break
-      }
-    }
-  }
+  . $PSScriptRoot/_TestHelpers.ps1
+  . $PSScriptRoot/../_Winamp-AutoRestartHelpers.ps1
 
   $DebugPreference = 'Continue'
   $conf = [PesterConfiguration]::Default

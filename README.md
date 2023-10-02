@@ -35,8 +35,9 @@ Script that changes the colours of the F1 - F5 keys, according to the current so
 
 **Needs:**
 * Logitech G LightSync keyboard
+* [Logitech G Hub](https://www.logitechg.com/en-us/innovation/g-hub.html)
 * https://github.com/levid0s/Logi-SetRGB
-* Winamp title format: `[%artist% - ]$if2(%title%,$filepart(%filename%))[  $repeat(★,%rating%) ]`
+* Winamp title format set to: `[%artist% - ]$if2(%title%,$filepart(%filename%))[  $repeat(★,%rating%) ]`
 
 ## Usage
 

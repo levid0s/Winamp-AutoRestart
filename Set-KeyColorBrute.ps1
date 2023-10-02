@@ -18,7 +18,13 @@ Rating: 5
 Rating: 4
 #>
 
-$LogiSetKeyPath = 'N:\src\Logi-SetRGB\Logi_SetTargetZone_Sample_CS\obj\x64\Debug\Logi_SetTargetZone_Sample_CS_old.exe'
+$LogiSetKeyPath = 'N:\src\Logi-SetRGB\Logi_SetTargetZone_Sample_CS\bin\x64\Debug\Logi_SetTargetZone_Sample_CS.exe'
+# Get process name of exe:
+$LogiSetKeyProcessName = Split-Path $LogiSetKeyPath -Leaf
+$LogiSetKeyProcessName = $LogiSetKeyProcessName -replace '\.[^.]*$'
+if (Get-Process $LogiSetKeyProcessName -ErrorAction SilentlyContinue) {
+  Throw "Process $LogiSetKeyProcessName is already running."
+}
 
 $LogiSetKey = Start-Process $LogiSetKeyPath -WindowStyle Minimized -PassThru
 
@@ -154,11 +160,12 @@ function Set-KeyColor {
 }
 
 $InformationPreference = 'Continue'
-$DebugPreference = 'SilentlyContinue'
-$VerbosePreference = 'SilentlyContinue'
+$DebugPreference = 'Continue'
+$VerbosePreference = 'Continue'
 
 $color_ON = [System.Drawing.ColorTranslator]::FromHtml('#FF0000')
 $color_OFF = [System.Drawing.ColorTranslator]::FromHtml('#000000')
+$color_blink = [System.Drawing.ColorTranslator]::FromHtml('#ff00ff')
 
 $pipeName = 'MyNamedPipe'
 $pipePath = "\\.\pipe\$pipeName"
@@ -173,43 +180,31 @@ try {
 
   Write-Information "Connected to named pipe: $pipePath"
 
-  $lastRating = $null
+  $prevLeading = $null
+  $blink = $null
 
-  while ($true) {
-    if (!(Get-Process winamp -ErrorAction SilentlyContinue)) {
-      Start-Sleep -Seconds 10
+  for ($i = 0x01; $i -le 0xFFFFFF; $i++) {
+    # Convert i to hex with padding
+    $hex = '0x' + $i.ToString('X').PadLeft(6, '0')
+    $leading = $i.ToString('X').PadLeft(6, '0')[0, 2] -join ''
+    if ($leading -ne $prevLeading) {
+      Write-Host "$hex"
+      if ($blink -eq $color_blink) {
+        $blink = $color_OFF
+      }
+      else {
+        $blink = $color_blink
+      }
+      Set-KeyColor -writer $writer -key '0xffff1' -color $blink
+      $prevLeading = $leading
     }
+    # Write-Host "$hex " -NoNewline
+    # Split $i into bits and do AND
 
-    Start-Sleep -Milliseconds 200
-
-    $rating = Get-WinampSongRating
-
-    if ($rating -eq $lastRating) {
-      continue
-    }
-    Write-Host "Rating: $rating"
-
-    switch ($true) {
-      { $rating -ge 1 } { Set-KeyColor -writer $writer -key $LOGI.F1 -color $color_ON }
-      { $rating -ge 2 } { Set-KeyColor -writer $writer -key $LOGI.F2 -color $color_ON }
-      { $rating -ge 3 } { Set-KeyColor -writer $writer -key $LOGI.F3 -color $color_ON }
-      { $rating -ge 4 } { Set-KeyColor -writer $writer -key $LOGI.F4 -color $color_ON }
-      { $rating -ge 5 } { Set-KeyColor -writer $writer -key $LOGI.F5 -color $color_ON }
-    }
-
-    switch ($true) {
-      { $rating -lt 5 } { Set-KeyColor -writer $writer -key $LOGI.F5 -color $color_OFF }
-      { $rating -lt 4 } { Set-KeyColor -writer $writer -key $LOGI.F4 -color $color_OFF }
-      { $rating -lt 3 } { Set-KeyColor -writer $writer -key $LOGI.F3 -color $color_OFF }
-      { $rating -lt 2 } { Set-KeyColor -writer $writer -key $LOGI.F2 -color $color_OFF }
-      { $rating -lt 1 } { Set-KeyColor -writer $writer -key $LOGI.F1 -color $color_OFF }
-    }
-
-    $lastRating = $rating
+    Set-KeyColor -writer $writer -key $hex -color $color_OFF
   }
-  else {
-    Write-Host 'Connection attempt timed out.'
-  }
+  Write-Host "`nRun completed, press any key to continue" -NoNewline
+  Read-Host | Out-Null
 }
 catch {
   Write-Host "Error: $($_.Exception.Message)"
