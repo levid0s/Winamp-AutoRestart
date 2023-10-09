@@ -2,275 +2,275 @@ $WM_COMMAND = 0x0111
 $WM_USER = 0x0400
 
 function Logger {
-  param(
-    [Parameter()][ValidateSet('Error', 'Warning', 'Information', 'Debug', 'Verbose')][string]$LogLevel,
-    [Parameter(Mandatory)][string]$Message
-  )
-  $Timestamp = Get-Date -Format 'yyyMMdd-HHmmss'
+    param(
+        [Parameter()][ValidateSet('Error', 'Warning', 'Information', 'Debug', 'Verbose')][string]$LogLevel,
+        [Parameter(Mandatory)][string]$Message
+    )
+    $Timestamp = Get-Date -Format 'yyyMMdd-HHmmss'
 
-  switch ($LogLevel) {
-    'Information' {
-      # Workaround for https://stackoverflow.com/questions/55191548/write-information-does-not-show-in-a-file-transcribed-by-start-transcript
-      Write-Information "${Timestamp}: $Message"
-      [System.Console]::WriteLine("INFO: ${Timestamp}: $Message")
+    switch ($LogLevel) {
+        'Information' {
+            # Workaround for https://stackoverflow.com/questions/55191548/write-information-does-not-show-in-a-file-transcribed-by-start-transcript
+            Write-Information "${Timestamp}: $Message"
+            [System.Console]::WriteLine("INFO: ${Timestamp}: $Message")
+        }
+        'Debug' {
+            Write-Debug "${Timestamp}: $Message"
+        }
+        'Verbose' {
+            Write-Verbose "${Timestamp}: $Message"
+        }
+        'Error' {
+            Write-Error "${Timestamp}: $Message"
+        }
+        'Warning' {
+            Write-Warning "${Timestamp}: $Message"
+        }
     }
-    'Debug' {
-      Write-Debug "${Timestamp}: $Message"
-    }
-    'Verbose' {
-      Write-Verbose "${Timestamp}: $Message"
-    }
-    'Error' {
-      Write-Error "${Timestamp}: $Message"
-    }
-    'Warning' {
-      Write-Warning "${Timestamp}: $Message"
-    }
-  }
 }
 
 Function Get-Timestamp {
-  <#
+    <#
   .VERSION 20230407
   #>
-  return Get-Date -Format 'yyyyMMdd-HHmmss'
+    return Get-Date -Format 'yyyyMMdd-HHmmss'
 }
 
 function Wait-WinampInit {
-  <#
+    <#
   .VERSION 2023.03.30
 
   .SYNOPSIS
   Wait until the Winamp API is ready to accept commands
   #>
-  param(
-    $window
-  )
+    param(
+        $window
+    )
 
-  $StartTime = Get-Date
+    $StartTime = Get-Date
 
-  $process = Get-Process 'winamp' -ErrorAction SilentlyContinue
-  if ($process.Count -ne 1) {
-    Logger -LogLevel Debug 'Waiting for the Winamp process to start..'
-    [System.Console]::Write('Waiting for Winamp to start.')
-    while ($process.Count -ne 1) {
-      try {
-        $process = Get-Process 'winamp' -ErrorAction SilentlyContinue
-      }
-      catch {
-      }
-      Start-Sleep -Seconds 1
-      [System.Console]::Write('.')
+    $process = Get-Process 'winamp' -ErrorAction SilentlyContinue
+    if ($process.Count -ne 1) {
+        Logger -LogLevel Debug 'Waiting for the Winamp process to start..'
+        [System.Console]::Write('Waiting for Winamp to start.')
+        while ($process.Count -ne 1) {
+            try {
+                $process = Get-Process 'winamp' -ErrorAction SilentlyContinue
+            }
+            catch {
+            }
+            Start-Sleep -Seconds 1
+            [System.Console]::Write('.')
+        }
+        [System.Console]::WriteLine(': ok')
     }
-    [System.Console]::WriteLine(': ok')
-  }
 
-  if ($window.ClassName -ne 'Winamp v1.x') {
-    Logger -LogLevel Debug 'Waiting for the Winamp 1.x class to initialize..'
-    [System.Console]::Write('Waiting for the Winamp 1.x class to load.')
-    while ($window.ClassName -ne 'Winamp v1.x') {
-      try {
-        $window = [System.Windows.Win32Window]::FromProcessName('winamp')
-      }
-      catch {
-      }
-      if ($process.HasExited) {
-        [System.Console]::Write(': failed!')
-        Throw 'Winamp exited unexpectedly.'
-      }
-      Start-Sleep -Seconds 1
-      [System.Console]::Write('.')
+    if ($window.ClassName -ne 'Winamp v1.x') {
+        Logger -LogLevel Debug 'Waiting for the Winamp 1.x class to initialize..'
+        [System.Console]::Write('Waiting for the Winamp 1.x class to load.')
+        while ($window.ClassName -ne 'Winamp v1.x') {
+            try {
+                $window = [System.Windows.Win32Window]::FromProcessName('winamp')
+            }
+            catch {
+            }
+            if ($process.HasExited) {
+                [System.Console]::Write(': failed!')
+                Throw 'Winamp exited unexpectedly.'
+            }
+            Start-Sleep -Seconds 1
+            [System.Console]::Write('.')
+        }
+        [System.Console]::WriteLine(': ok')
     }
-    [System.Console]::WriteLine(': ok')
-  }
   
-  [System.Console]::Write('Waiting for the API to be ready.')
+    [System.Console]::Write('Waiting for the API to be ready.')
 
-  do {
-    if ($process.HasExited) {
-      [System.Console]::Write(': failed!')
-      Throw 'Winamp exited unexpectedly.'
-    }
-    $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
-    [System.Console]::Write('.')
-    Start-Sleep -Seconds 1
-  } while (!([long]$SeekPosMS -gt 0))
-  $Duration = (Get-Date) - $StartTime
-  [System.Console]::WriteLine(": ok (SeekPosMS:$SeekPosMS)")
-  Logger -LogLevel Debug "Winamp API ready. SeekPosMS: $SeekPosMS. Duration: $Duration"
-  return $window | Where-Object ClassName -EQ 'Winamp v1.x' 
+    do {
+        if ($process.HasExited) {
+            [System.Console]::Write(': failed!')
+            Throw 'Winamp exited unexpectedly.'
+        }
+        $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
+        [System.Console]::Write('.')
+        Start-Sleep -Seconds 1
+    } while (!([long]$SeekPosMS -gt 0))
+    $Duration = (Get-Date) - $StartTime
+    [System.Console]::WriteLine(": ok (SeekPosMS:$SeekPosMS)")
+    Logger -LogLevel Debug "Winamp API ready. SeekPosMS: $SeekPosMS. Duration: $Duration"
+    return $window | Where-Object ClassName -EQ 'Winamp v1.x' 
 }
 
 function Get-WinampStatus {
-  param(
-    [Parameter(Mandatory = $true)]$Window
-  )
-  $playStatus = Get-WinampPlayStatus -Window $Window
-  $SeekPosMS = Get-WinampSeekPos -Window $Window
-  $PlaylistIndex = Get-WinampPlaylistIndex -Window $Window
+    param(
+        [Parameter(Mandatory = $true)]$Window
+    )
+    $playStatus = Get-WinampPlayStatus -Window $Window
+    $SeekPosMS = Get-WinampSeekPos -Window $Window
+    $PlaylistIndex = Get-WinampPlaylistIndex -Window $Window
 
-  $fingerprint = "hWnd=$($window.hWnd);status=$playStatus;ix=$PlaylistIndex;seek=$SeekPosMS"
-  return @{
-    hWnd        = $window.hWnd
-    PlayStatus  = $playStatus
-    SeekPosMS   = $SeekPosMS
-    Fingerprint = $fingerprint
-    StartTime   = $window.Process.StartTime
-    Timestamp   = Get-Date
-    Tainted     = $false
-  }
+    $fingerprint = "hWnd=$($window.hWnd);status=$playStatus;ix=$PlaylistIndex;seek=$SeekPosMS"
+    return @{
+        hWnd        = $window.hWnd
+        PlayStatus  = $playStatus
+        SeekPosMS   = $SeekPosMS
+        Fingerprint = $fingerprint
+        StartTime   = $window.Process.StartTime
+        Timestamp   = Get-Date
+        Tainted     = $false
+    }
 }
 
 function Restart-Winamp {
-  # https://forums.winamp.com/forum/developer-center/winamp-development/156726-winamp-application-programming-interface?postid=1953663
-  param(
-    [Parameter(Mandatory = $true)]$Window
-  )
+    # https://forums.winamp.com/forum/developer-center/winamp-development/156726-winamp-application-programming-interface?postid=1953663
+    param(
+        [Parameter(Mandatory = $true)]$Window
+    )
 
-  $WM_COMMAND = 0x0111
-  $WM_USER = 0x0400
+    $WM_COMMAND = 0x0111
+    $WM_USER = 0x0400
 
-  $playStatus = $window.SendMessage($WM_USER, 0, 104) # 0: stopped, 1: playing, 3: paused
-  $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
-  Logger -LogLevel Debug "Winamp: hWnd: $($window.hWnd), PlayStatus: $playStatus, SeekPos: $SeekPosMS"
-  Logger -LogLevel Information 'RESTARTING Winamp..'
-  $process = Get-Process 'winamp'
-  $window.SendMessage($WM_USER, 0, 135) | Out-Null
-  While (!$process.HasExited) {
-    Start-Sleep 1
-  }
-  $process = Get-Process 'winamp'
-  $window = Wait-WinampInit
+    $playStatus = $window.SendMessage($WM_USER, 0, 104) # 0: stopped, 1: playing, 3: paused
+    $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
+    Logger -LogLevel Debug "Winamp: hWnd: $($window.hWnd), PlayStatus: $playStatus, SeekPos: $SeekPosMS"
+    Logger -LogLevel Information 'RESTARTING Winamp..'
+    $process = Get-Process 'winamp'
+    $window.SendMessage($WM_USER, 0, 135) | Out-Null
+    While (!$process.HasExited) {
+        Start-Sleep 1
+    }
+    $process = Get-Process 'winamp'
+    $window = Wait-WinampInit
 
-  Logger -LogLevel Information "Winamp restarted: hWnd: $($window.hWnd), PlayStatus: $playStatus, SeekPos: $SeekPosMS"
+    Logger -LogLevel Information "Winamp restarted: hWnd: $($window.hWnd), PlayStatus: $playStatus, SeekPos: $SeekPosMS"
 
-  switch ($playStatus) {
-    1 {
-      Invoke-WinampPlay -Window $window | Out-Null
+    switch ($playStatus) {
+        1 {
+            Invoke-WinampPlay -Window $window | Out-Null
       
-      Logger -LogLevel Debug "Seeking to previous pos: $seekPosMS ms"
-      Set-WinampSeekPos -Window $window -SeekPosMS $SeekPosMS | Out-Null
+            Logger -LogLevel Debug "Seeking to previous pos: $seekPosMS ms"
+            Set-WinampSeekPos -Window $window -SeekPosMS $SeekPosMS | Out-Null
 
-      $window.SendMessage($WM_USER, $SeekPosMS, 106) | Out-Null
+            $window.SendMessage($WM_USER, $SeekPosMS, 106) | Out-Null
+        }
+        3 {
+            Invoke-WinampPlay -Window $window | Out-Null
+            Logger -LogLevel Debug "Seeking to previous pos: $seekPosMS ms"
+            Set-WinampSeekPos -Window $window -SeekPosMS $SeekPosMS | Out-Null
+            Invoke-WinampPause -Window $window | Out-Null
+        }
     }
-    3 {
-      Invoke-WinampPlay -Window $window | Out-Null
-      Logger -LogLevel Debug "Seeking to previous pos: $seekPosMS ms"
-      Set-WinampSeekPos -Window $window -SeekPosMS $SeekPosMS | Out-Null
-      Invoke-WinampPause -Window $window | Out-Null
-    }
-  }
 
-  return $window
+    return $window
 }
 
 
 #######
 
 function Get-WinampSeekPos {
-  param(
-    [Parameter(Mandatory = $true)]$Window
-  )
-  # [long]$SeekPosMS = ExponentialBackoff -Rounds 3 -InitialDelayMs 100 -Do {
-  #   $window.SendMessage($WM_USER, 0, 105)
-  # } -Check {
-  #   $result -gt 0 ## Not implemented yet in ExponentialBackoff
-  # }
-  # [long]$SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
-  # while ($SeekPosMS -eq 0) {
-  #   Start-Sleep 1
-  #   $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
-  # }
+    param(
+        [Parameter(Mandatory = $true)]$Window
+    )
+    # [long]$SeekPosMS = ExponentialBackoff -Rounds 3 -InitialDelayMs 100 -Do {
+    #   $window.SendMessage($WM_USER, 0, 105)
+    # } -Check {
+    #   $result -gt 0 ## Not implemented yet in ExponentialBackoff
+    # }
+    # [long]$SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
+    # while ($SeekPosMS -eq 0) {
+    #   Start-Sleep 1
+    #   $SeekPosMS = $window.SendMessage($WM_USER, 0, 105)
+    # }
 
-  $SeekPosMS = ExponentialBackoff `
-    -Do { $window.SendMessage($WM_USER, 0, 105) } `
-    -Check { [long]$DoResult -gt 0 }
+    $SeekPosMS = ExponentialBackoff `
+        -Do { $window.SendMessage($WM_USER, 0, 105) } `
+        -Check { [long]$DoResult -gt 0 }
 
-  return [long]$SeekPosMS.DoResult
+    return [long]$SeekPosMS.DoResult
 }
 
 function Get-WinampPlayStatus {
-  <#
+    <#
   0: stopped, 1: playing, 3: paused
   #>
-  param(
-    [Parameter(Mandatory = $true)]$Window
-  )
-  $playStatus = $window.SendMessage($WM_USER, 0, 104)
-  return $playStatus
+    param(
+        [Parameter(Mandatory = $true)]$Window
+    )
+    $playStatus = $window.SendMessage($WM_USER, 0, 104)
+    return $playStatus
 }
 
 function Invoke-WinampPause {
-  param(
-    [Parameter(Mandatory = $true)]$Window
-  )
-  Logger -LogLevel Information 'Pressing: PLAY'
+    param(
+        [Parameter(Mandatory = $true)]$Window
+    )
+    Logger -LogLevel Information 'Pressing: PLAY'
   
-  $result = ExponentialBackoff `
-    -Do { $window.SendMessage($WM_COMMAND, 40046, 0) } `
-    -Check { (Get-WinampPlayStatus -Window $Window) -eq 3 }
+    $result = ExponentialBackoff `
+        -Do { $window.SendMessage($WM_COMMAND, 40046, 0) } `
+        -Check { (Get-WinampPlayStatus -Window $Window) -eq 3 }
 
-  return $result.CheckResult
+    return $result.CheckResult
 }
 
 function Invoke-WinampPlay {
-  param(
-    [Parameter(Mandatory = $true)]$Window
-  )
-  Logger -LogLevel Information 'Pressing: PAUSE'
-  $result = ExponentialBackoff `
-    -Do { $window.SendMessage($WM_COMMAND, 40045, 0) } `
-    -Check { (Get-WinampPlayStatus -Window $Window) -eq 1 }
+    param(
+        [Parameter(Mandatory = $true)]$Window
+    )
+    Logger -LogLevel Information 'Pressing: PAUSE'
+    $result = ExponentialBackoff `
+        -Do { $window.SendMessage($WM_COMMAND, 40045, 0) } `
+        -Check { (Get-WinampPlayStatus -Window $Window) -eq 1 }
   
-  return $result.CheckResult
+    return $result.CheckResult
 }
 
 function Invoke-WinampRestart {
-  param(
-    [Parameter(Mandatory = $true)]$Window
-  )
-  Logger -LogLevel Information 'RESTARTING Winamp..'
-  $result = $window.SendMessage($WM_USER, 0, 135)
-  return $result
+    param(
+        [Parameter(Mandatory = $true)]$Window
+    )
+    Logger -LogLevel Information 'RESTARTING Winamp..'
+    $result = $window.SendMessage($WM_USER, 0, 135)
+    return $result
 }
 
 function Set-WinampPlaylistIndex {
-  param(
-    [Parameter(Mandatory = $true)]$Window,
-    [Parameter(Mandatory = $true)][int]$PlaylistIndex # Starts at 1
-  )
+    param(
+        [Parameter(Mandatory = $true)]$Window,
+        [Parameter(Mandatory = $true)][int]$PlaylistIndex # Starts at 1
+    )
 
-  Logger -LogLevel Information "Seeking to Playlist index: $($PlaylistIndex)"
-  $result = ExponentialBackoff `
-    -Do { $window.SendMessage($WM_USER, $PlaylistIndex - 1, 121) } `
-    -Check { (Get-WinampPlaylistIndex -Window $Window) -eq $PlaylistIndex }
+    Logger -LogLevel Information "Seeking to Playlist index: $($PlaylistIndex)"
+    $result = ExponentialBackoff `
+        -Do { $window.SendMessage($WM_USER, $PlaylistIndex - 1, 121) } `
+        -Check { (Get-WinampPlaylistIndex -Window $Window) -eq $PlaylistIndex }
 
-  return $result.DoResult + 1
+    return $result.DoResult + 1
 }
 
 function Get-WinampPlaylistIndex {
-  param(
-    [Parameter(Mandatory = $true)]$Window
-  )
-  $result = $window.SendMessage($WM_USER, 0, 125)
-  return $result + 1
+    param(
+        [Parameter(Mandatory = $true)]$Window
+    )
+    $result = $window.SendMessage($WM_USER, 0, 125)
+    return $result + 1
 }
 
 function Set-WinampSeekPos {
-  param(
-    [Parameter(Mandatory = $true)]$Window,
-    [Parameter(Mandatory = $true)][long]$SeekPosMS
-  )
-  Logger -LogLevel Information "Seeking track to time(ms): $($SeekPosMS)"
-  $result = ExponentialBackoff `
-    -Do { $window.SendMessage($WM_USER, $SeekPosMS, 106) } `
-    -Check { [long]$test = Get-WinampSeekPos -Window $Window; ([Math]::Abs($SeekPosMS - $test) -lt 2000) }
+    param(
+        [Parameter(Mandatory = $true)]$Window,
+        [Parameter(Mandatory = $true)][long]$SeekPosMS
+    )
+    Logger -LogLevel Information "Seeking track to time(ms): $($SeekPosMS)"
+    $result = ExponentialBackoff `
+        -Do { $window.SendMessage($WM_USER, $SeekPosMS, 106) } `
+        -Check { [long]$test = Get-WinampSeekPos -Window $Window; ([Math]::Abs($SeekPosMS - $test) -lt 2000) }
 
-  return $result.CheckResult
+    return $result.CheckResult
 }
 
 function Get-WinampSongRating {
-  <#
+    <#
   .VERSION 20230415
   
   .SYNOPSIS
@@ -280,74 +280,77 @@ function Get-WinampSongRating {
   The function counts the number of stars in the title of the Winamp window.
   #>
   
-  $wpid = Get-Process winamp -ErrorAction SilentlyContinue
-  if (!$wpid) {
-    Write-Debug 'Winamp not running.'
-    return $null
-  }
+    $wpid = Get-Process winamp -ErrorAction SilentlyContinue
+    if (!$wpid) {
+        Write-Debug 'Winamp not running.'
+        return $null
+    }
+    if ($wpid.Count -gt 1) {
+        Throw "Multiple Winamp processes found; PIDs: $($wpid | Select-Object -ExpandProperty Id)"
+    }
     
-  $rating = $null
-  $wTitles = @()
-  [WinAPI]::GetProcessWindows($wpid.Id, [ref]$wTitles) | Out-Null
+    $rating = $null
+    $wTitles = @()
+    [WinAPI]::GetProcessWindows($wpid.Id, [ref]$wTitles) | Out-Null
   
-  # There are two titles that contain the rating, but one is not instantly updated when the rating changes.
-  # The safest way to get the rating is (Get-Process winamp).MainWindowTitle but that's not available when the "Now playing notifier" pops up.
-  $search = $wTitles | Select-String "($([char]0x2605)+)?\s*\-\s*Winamp" | Select-Object -Last 1
-  if (!$search) {
-    Write-Debug 'Winamp song info not found in window titles.'
-    return $null
-  }
-  Write-Debug "Search result: $($search.ToString())"
-  Write-Verbose "Search groups: $($search.Matches.Groups | Out-String)"
-  $rating = $search.Matches.Groups[1].Value.Length
-  return $rating
+    # There are two titles that contain the rating, but one is not instantly updated when the rating changes.
+    # The safest way to get the rating is (Get-Process winamp).MainWindowTitle but that's not available when the "Now playing notifier" pops up.
+    $search = $wTitles | Select-String "($([char]0x2605)+)?\s*\-\s*Winamp" | Select-Object -Last 1
+    if (!$search) {
+        Write-Debug 'Winamp song info not found in window titles.'
+        return $null
+    }
+    Write-Debug "Search result: $($search.ToString())"
+    Write-Verbose "Search groups: $($search.Matches.Groups | Out-String)"
+    $rating = $search.Matches.Groups[1].Value.Length
+    return $rating
 }
   
 Function ExponentialBackoff {
-  <#
+    <#
   .VERSION 20230408
   #>
-  param(
-    [int]$Rounds = 5,
-    [int]$InitialDelayMs = 100,
-    [scriptblock]$Do = {},
-    [scriptblock]$Check = {}
-  )
+    param(
+        [int]$Rounds = 5,
+        [int]$InitialDelayMs = 100,
+        [scriptblock]$Do = {},
+        [scriptblock]$Check = {}
+    )
 
-  $CheckResult = $null
+    $CheckResult = $null
 
-  for ($round = 1; $round -le $rounds; $round++) {
-    if ($round -gt 1) {
-      Write-Verbose "Check condition not met, retrying with exponential backoff, round $round. Sleeping for $InitialDelayMs ms.."
-      Start-Sleep -Milliseconds $InitialDelayMs  
-      $InitialDelayMs *= 2
-    }
-    try {
-      $DoResult = & $Do
-      $DoSuccess = $true
-    }
-    catch {
-      $DoSuccess = $false
-    }
+    for ($round = 1; $round -le $rounds; $round++) {
+        if ($round -gt 1) {
+            Write-Verbose "Check condition not met, retrying with exponential backoff, round $round. Sleeping for $InitialDelayMs ms.."
+            Start-Sleep -Milliseconds $InitialDelayMs  
+            $InitialDelayMs *= 2
+        }
+        try {
+            $DoResult = & $Do
+            $DoSuccess = $true
+        }
+        catch {
+            $DoSuccess = $false
+        }
 
-    # If a Check block was provided, success depends if the Check block returns $true.
-    if ($Check.ToString()) {
-      $CheckResult = & $Check
-      if (!$CheckResult) {
-        Continue
-      }
-    }
-    else {
-      # If no Check block was provided, success depends if the Do block doesn't throw an error.
-      if (!$DoSuccess) {
-        Continue
-      }
-    }
+        # If a Check block was provided, success depends if the Check block returns $true.
+        if ($Check.ToString()) {
+            $CheckResult = & $Check
+            if (!$CheckResult) {
+                Continue
+            }
+        }
+        else {
+            # If no Check block was provided, success depends if the Do block doesn't throw an error.
+            if (!$DoSuccess) {
+                Continue
+            }
+        }
 
-    Write-Verbose 'Check condition met, exiting loop.'
-    return @{DoResult = $DoResult; CheckResult = $CheckResult }
-  }
-  Throw "Check condition not met after $Rounds rounds."
+        Write-Verbose 'Check condition met, exiting loop.'
+        return @{DoResult = $DoResult; CheckResult = $CheckResult }
+    }
+    Throw "Check condition not met after $Rounds rounds."
 }
 
 #######
@@ -357,7 +360,7 @@ Function ExponentialBackoff {
 ###
 
 function Register-PowerShellScheduledTask {
-  <#
+    <#
   .VERSION 20230407
 
   .SYNOPSIS
@@ -410,140 +413,140 @@ function Register-PowerShellScheduledTask {
   The Scheduled Task will be run at system startup. Requires admin rights.
   #>
 
-  param(
-    [Parameter(Mandatory = $true, Position = 0)]$ScriptPath,
-    [hashtable]$Parameters = @{},
-    [string]$TaskName,
-    [int]$TimeInterval,
-    [switch]$AtLogon,
-    [switch]$AtStartup,
-    [bool]$AllowRunningOnBatteries,
-    [switch]$DisallowHardTerminate,
-    [TimeSpan]$ExecutionTimeLimit,
-    [string]$GroupId,
-    [switch]$AsAdmin,
-    [switch]$Uninstall
-  )
+    param(
+        [Parameter(Mandatory = $true, Position = 0)]$ScriptPath,
+        [hashtable]$Parameters = @{},
+        [string]$TaskName,
+        [int]$TimeInterval,
+        [switch]$AtLogon,
+        [switch]$AtStartup,
+        [bool]$AllowRunningOnBatteries,
+        [switch]$DisallowHardTerminate,
+        [TimeSpan]$ExecutionTimeLimit,
+        [string]$GroupId,
+        [switch]$AsAdmin,
+        [switch]$Uninstall
+    )
 
-  if (!($TimeInterval -or $AtLogon -or $AtStartup -or $Uninstall)) {
-    Throw 'At least one of the following parameters must be defined: -TimeInterval, -AtLogon, -AtStartup, (or -Uninstall)'
-  }
+    if (!($TimeInterval -or $AtLogon -or $AtStartup -or $Uninstall)) {
+        Throw 'At least one of the following parameters must be defined: -TimeInterval, -AtLogon, -AtStartup, (or -Uninstall)'
+    }
 
-  if ([string]::IsNullOrEmpty($TaskName)) {
-    $TaskName = Split-Path $ScriptPath -Leaf
-  }
+    if ([string]::IsNullOrEmpty($TaskName)) {
+        $TaskName = Split-Path $ScriptPath -Leaf
+    }
 
-  ## Uninstall
-  if ($Uninstall) {
-    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
-    # Return $true if no tasks found, otherwise $false
-    return !(Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)
-  }
+    ## Uninstall
+    if ($Uninstall) {
+        Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+        # Return $true if no tasks found, otherwise $false
+        return !(Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue)
+    }
 
-  ## Install
-  if (!(Test-Path $ScriptPath)) {
-    Throw "Script ``$ScriptPath`` not found!"
-  }
-  $ScriptPath = Resolve-Path -LiteralPath $ScriptPath
+    ## Install
+    if (!(Test-Path $ScriptPath)) {
+        Throw "Script ``$ScriptPath`` not found!"
+    }
+    $ScriptPath = Resolve-Path -LiteralPath $ScriptPath
 
-  # Create wrapper vbs script so we can run the PowerShell script as hidden
-  # https://github.com/PowerShell/PowerShell/issues/3028
-  if ($GroupId) {
-    $vbsPath = "$env:ALLUSERSPROFILE\PsScheduledTasks\$TaskName.vbs"
-  }
-  else {
-    $vbsPath = "$env:LOCALAPPDATA\PsScheduledTasks\$TaskName.vbs"
-  }
-  $vbsDir = Split-Path $vbsPath -Parent
+    # Create wrapper vbs script so we can run the PowerShell script as hidden
+    # https://github.com/PowerShell/PowerShell/issues/3028
+    if ($GroupId) {
+        $vbsPath = "$env:ALLUSERSPROFILE\PsScheduledTasks\$TaskName.vbs"
+    }
+    else {
+        $vbsPath = "$env:LOCALAPPDATA\PsScheduledTasks\$TaskName.vbs"
+    }
+    $vbsDir = Split-Path $vbsPath -Parent
 
-  if (!(Test-Path $vbsDir)) {
-    New-Item -ItemType Directory -Path $vbsDir
-  }
+    if (!(Test-Path $vbsDir)) {
+        New-Item -ItemType Directory -Path $vbsDir
+    }
 
-  $ps = @(); $Parameters.GetEnumerator() | ForEach-Object { $ps += "-$($_.Name) $($_.Value)" }; $ps -join ' '
-  $vbsScript = @"
+    $ps = @(); $Parameters.GetEnumerator() | ForEach-Object { $ps += "-$($_.Name) $($_.Value)" }; $ps -join ' '
+    $vbsScript = @"
 Dim shell,command
 command = "powershell.exe -nologo -File $ScriptPath $ps"
 Set shell = CreateObject("WScript.Shell")
 shell.Run command, 0, true
 "@
 
-  Set-Content -Path $vbsPath -Value $vbsScript -Force
+    Set-Content -Path $vbsPath -Value $vbsScript -Force
 
-  Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue -OutVariable TaskExists
-  if ($TaskExists.State -eq 'Running') {
-    Write-Debug "Stopping task for update: $TaskName"
-    $TaskExists | Stop-ScheduledTask
-  }
-  $action = New-ScheduledTaskAction -Execute $vbsPath
+    Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue -OutVariable TaskExists
+    if ($TaskExists.State -eq 'Running') {
+        Write-Debug "Stopping task for update: $TaskName"
+        $TaskExists | Stop-ScheduledTask
+    }
+    $action = New-ScheduledTaskAction -Execute $vbsPath
   
-  ## Schedule
-  $triggers = @()
-  if ($TimeInterval) {
-    $t1 = New-ScheduledTaskTrigger -Daily -At 00:05
-    $t2 = New-ScheduledTaskTrigger -Once -At 00:05 `
-      -RepetitionInterval (New-TimeSpan -Minutes $TimeInterval) `
-      -RepetitionDuration (New-TimeSpan -Hours 23 -Minutes 55)
-    $t1.Repetition = $t2.Repetition
-    $t1.Repetition.StopAtDurationEnd = $false
-    $triggers += $t1
-  }
-  if ($AtLogOn) {
-    $triggers += New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-  }
-  if ($AtStartUp) {
-    $triggers += New-ScheduledTaskTrigger -AtStartup
-  }
+    ## Schedule
+    $triggers = @()
+    if ($TimeInterval) {
+        $t1 = New-ScheduledTaskTrigger -Daily -At 00:05
+        $t2 = New-ScheduledTaskTrigger -Once -At 00:05 `
+            -RepetitionInterval (New-TimeSpan -Minutes $TimeInterval) `
+            -RepetitionDuration (New-TimeSpan -Hours 23 -Minutes 55)
+        $t1.Repetition = $t2.Repetition
+        $t1.Repetition.StopAtDurationEnd = $false
+        $triggers += $t1
+    }
+    if ($AtLogOn) {
+        $triggers += New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+    }
+    if ($AtStartUp) {
+        $triggers += New-ScheduledTaskTrigger -AtStartup
+    }
     
-  ## Additional Options
-  $AdditionalOptions = @{}
+    ## Additional Options
+    $AdditionalOptions = @{}
 
-  if ($AsAdmin) {
-    $AdditionalOptions.RunLevel = 'Highest'
-  }
+    if ($AsAdmin) {
+        $AdditionalOptions.RunLevel = 'Highest'
+    }
 
-  if ($GroupId) {
-    $STPrin = New-ScheduledTaskPrincipal -GroupId $GroupId
-    $AdditionalOptions.Principal = $STPrin
-  }
+    if ($GroupId) {
+        $STPrin = New-ScheduledTaskPrincipal -GroupId $GroupId
+        $AdditionalOptions.Principal = $STPrin
+    }
   
-  ## Settings 
-  $AdditionalSettings = @{}
+    ## Settings 
+    $AdditionalSettings = @{}
 
-  if ($AllowRunningOnBatteries -eq $true) {
-    $AdditionalSettings.AllowStartIfOnBatteries = $true
-    $AdditionalSettings.DontStopIfGoingOnBatteries = $true
-  }
-  elseif ($AllowRunningOnBatteries -eq $false) {
-    $AdditionalSettings.AllowStartIfOnBatteries = $false
-    $AdditionalSettings.DontStopIfGoingOnBatteries = $false
-  }
+    if ($AllowRunningOnBatteries -eq $true) {
+        $AdditionalSettings.AllowStartIfOnBatteries = $true
+        $AdditionalSettings.DontStopIfGoingOnBatteries = $true
+    }
+    elseif ($AllowRunningOnBatteries -eq $false) {
+        $AdditionalSettings.AllowStartIfOnBatteries = $false
+        $AdditionalSettings.DontStopIfGoingOnBatteries = $false
+    }
 
-  if ($DisallowHardTerminate) {
-    $AdditionalSettings.DisallowHardTerminate = $true
-  }
+    if ($DisallowHardTerminate) {
+        $AdditionalSettings.DisallowHardTerminate = $true
+    }
 
-  if ($ExecutionTimeLimit) {
-    $AdditionalSettings.ExecutionTimeLimit = $ExecutionTimeLimit
-  }
+    if ($ExecutionTimeLimit) {
+        $AdditionalSettings.ExecutionTimeLimit = $ExecutionTimeLimit
+    }
 
 
-  $STSet = New-ScheduledTaskSettingsSet `
-    -MultipleInstances IgnoreNew `
-    @AdditionalSettings
+    $STSet = New-ScheduledTaskSettingsSet `
+        -MultipleInstances IgnoreNew `
+        @AdditionalSettings
 
-  ## Decide if Register or Update
-  if (!$TaskExists) {
-    $cim = Register-ScheduledTask -Action $action -Trigger $triggers -TaskName $TaskName -Description "Scheduled Task for running $ScriptPath" -Settings $STSet @AdditionalOptions
-  }
-  else {
-    $cim = Set-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers -Settings $STSet @AdditionalOptions
-  }
+    ## Decide if Register or Update
+    if (!$TaskExists) {
+        $cim = Register-ScheduledTask -Action $action -Trigger $triggers -TaskName $TaskName -Description "Scheduled Task for running $ScriptPath" -Settings $STSet @AdditionalOptions
+    }
+    else {
+        $cim = Set-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers -Settings $STSet @AdditionalOptions
+    }
 
-  # Sometimes $cim returns more than 1 object, looks like a PowerShell bug.
-  # In those cases, get the last element of the list.
-  return $cim
+    # Sometimes $cim returns more than 1 object, looks like a PowerShell bug.
+    # In those cases, get the last element of the list.
+    return $cim
 }
 
 ###
