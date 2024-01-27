@@ -1,8 +1,8 @@
 <#
-.VERSION 2023.10.09
+.VERSION 2023.11.18
 
 .SYNOPSIS
-Change set the colours of the F1 - F5 keys according to the current song's rating in Winamp.
+The script sets the colours on the F1 - F5 keys, according to the currently playing song's rating in Winamp.
 
 .DESCRIPTION
 Script that checks Winamp song ratings, and sets the colours on the F1 - F5 keys, on a Logitech G815 keyboard.
@@ -18,9 +18,37 @@ Rating: 5
 Rating: 4
 #>
 
-$LogiSetKeyPath = 'N:\src\Logi-SetRGB\Logi_SetTargetZone_Sample_CS\obj\x64\Debug\Logi_SetTargetZone_Sample_CS_old.exe'
+function Write-SongRatingLog {
+    [CmdletBinding()]
+    param(
+        [string]$Title,
+        [int]$Rating,
+        [string]$LogPath
+    )
+    $timestampIso = Get-Date -Format 'yyyy-MM-ddTHH:mm:ss'
+    $logLine = "$timestampIso,$title,$rating"
+    Write-Verbose "Logging: $logLine"
+    Add-Content -Path $LogPath -Value $logLine    
+}
 
-$LogiSetKey = Start-Process $LogiSetKeyPath -WindowStyle Minimized -PassThru
+
+[CmdletBinding()]
+
+$DebugPreference = 'Continue'
+$host.UI.RawUI.WindowTitle = 'Set-KeyColorBySongRating.ps1'
+
+$RatingsLogPath = 'N:\Tools\Winamp-58portable\Ratings\Ratings.log'
+$LogiSetKeyPath = 'N:\src\Logi-SetRGB\Logi_SetTargetZone_Sample_CS\obj\x64\Debug\Logi_SetTargetZone_Sample_CS_old.exe'
+$LogiSetKeyName = [System.IO.Path]::GetFileNameWithoutExtension($LogiSetKeyPath)
+
+$CheckProcess = Get-Process $LogiSetKeyName -ErrorAction SilentlyContinue
+if ($null -eq $CheckProcess) {
+    Write-Debug "Starting $LogiSetKeyName."
+    $LogiSetKey = Start-Process $LogiSetKeyPath -WindowStyle Minimized -PassThru
+}
+else {
+    Write-Debug "$LogiSetKeyName already running."
+}
 
 $LOGI = @{
     ESC                = '0x01'
@@ -142,6 +170,7 @@ $LOGI = @{
 
 Add-Type -AssemblyName System.Drawing
 
+$DebugPreference = 'SilentlyContinue'
 . "$PSScriptRoot/_Winamp-AutoRestartHelpers.ps1"
 
 function Set-KeyColor {
@@ -154,8 +183,8 @@ function Set-KeyColor {
 }
 
 $InformationPreference = 'Continue'
-$DebugPreference = 'SilentlyContinue'
-$VerbosePreference = 'SilentlyContinue'
+$DebugPreference = 'Continue'
+
 
 $color_ON = [System.Drawing.ColorTranslator]::FromHtml('#FF0000')
 $color_OFF = [System.Drawing.ColorTranslator]::FromHtml('#000000')
@@ -164,35 +193,49 @@ $pipeName = 'MyNamedPipe'
 $pipePath = "\\.\pipe\$pipeName"
 
 
-
 try {
     Write-Debug "Attempting to connect to named pipe: $pipePath"
+    Write-Verbose 'Creating Pipe..'
     $pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', $pipeName, [System.IO.Pipes.PipeDirection]::Out)
-    $pipe.Connect()
+    $timeout = 5000
+    Write-Verbose "Connecting to pipe with timeout ${timeout}ms.."
+    $pipe.Connect($timeout)
 
+    Write-Verbose 'Creating writer..'
     $writer = New-Object System.IO.StreamWriter($pipe)
     $writer.AutoFlush = $true
 
     Write-Information "Connected to named pipe: $pipePath"
 
     $lastRating = $null
+    $song = $null
+
+    $proc = Get-Process winamp -ErrorAction SilentlyContinue
 
     while ($true) {
-        $proc = Get-Process winamp -ErrorAction SilentlyContinue
-        if (!($proc)) {
+        while ($null -eq $proc -or $proc.HasExited) {
             Write-Verbose 'Waiting for Winamp to start..'
-            Start-Sleep -Seconds 10
+            Start-Sleep -Seconds 2
+            $proc = Get-Process winamp -ErrorAction SilentlyContinue
         }
         if ($proc.Count -gt 1) {
             Throw "Multiple Winamp processes detected: $($proc | Select-Object -ExpandProperty Id)"
         }
 
         Start-Sleep -Milliseconds 200
+        
+        $lastSong = $song
+        $lastRating = $rating
 
-        $rating = Get-WinampSongRating
+        $song = Get-WinampSongTitle -ErrorAction SilentlyContinue
+        $rating = Get-WinampSongRating -ErrorAction SilentlyContinue
 
         if ($rating -eq $lastRating) {
             continue
+        }
+        if ($song -eq $lastsong -and $Rating -ne $lastRating -and $null -ne $Song) {
+            Write-Debug "Rated song: $song [$Rating]"
+            Write-SongRatingLog -Title $song -Rating $Rating -LogPath $RatingsLogPath
         }
         Write-Host "Rating: $rating"
 
@@ -212,7 +255,6 @@ try {
             { $rating -lt 1 } { Set-KeyColor -writer $writer -key $LOGI.F1 -color $color_OFF }
         }
 
-        $lastRating = $rating
     }
     else {
         Write-Host 'Connection attempt timed out.'
@@ -225,5 +267,5 @@ finally {
     $writer.Close()
     $pipe.Close()
 
-    Stop-Process $LogiSetKey -Force
+    Stop-Process $LogiSetKey -ErrorAction SilentlyContinue
 }

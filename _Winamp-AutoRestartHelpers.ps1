@@ -269,17 +269,84 @@ function Set-WinampSeekPos {
     return $result.CheckResult
 }
 
+function Get-WinampSongTitle {
+    <#
+    .VERSION 2023.11.25
+    
+    .SYNOPSIS
+    Returns the title of the currently selected song in Winamp.
+
+    #>
+
+    [CmdletBinding()]
+    param(
+    )
+
+    $DebugPreference = 'SilentlyContinue'
+    if ($PSBoundParameters.ContainsKey('Debug')) {
+        $DebugPreference = 'Continue'
+    }
+
+    $VerbosePreference = 'SilentlyContinue'
+    if ($PSBoundParameters.ContainsKey('Verbose')) {
+        $VerbosePreference = 'Continue'
+    }
+
+    $wpid = Get-Process winamp -ErrorAction SilentlyContinue
+    if (!$wpid) {
+        Write-Debug 'Winamp not running.'
+        return $null
+    }
+    if ($wpid.Count -gt 1) {
+        if ($ErrorActionPreference -eq 'SilentlyContinue') {
+            return $null
+        }
+        Throw "Multiple Winamp processes found; PIDs: $($wpid | Select-Object -ExpandProperty Id)"
+    }
+
+    $wTitles = @()
+    [WinAPI]::GetProcessWindows($wpid.Id, [ref]$wTitles) | Out-Null
+    $Search = $wTitles | Select-String '- Winamp' | Select-Object -Last 1
+    if (!$Search) {
+        if ($ErrorActionPreference -eq 'SilentlyContinue') {
+            return $null
+        }
+        Throw 'Winamp song info not found in window titles.'
+    }
+
+    $Title = $Search.ToString()
+    $Title = $Title -replace '★', ''
+    $Title = $Title -replace '\s*\[(?:Stopped|Paused)\]$'
+    $Title = $Title -replace '^\d+\.\s*', ''
+    $Title = $Title -replace '\s*\-\s*Winamp$', ''
+    return $Title
+}
+
 function Get-WinampSongRating {
     <#
-  .VERSION 20230415
-  
-  .SYNOPSIS
-  Gets the rating of the currently playing song in Winamp.
+    .VERSION 2023.11.18
+    
+    .SYNOPSIS
+    Gets the rating of the currently playing song in Winamp.
 
-  .DESCRIPTION
-  The function counts the number of stars in the title of the Winamp window.
-  #>
-  
+    .DESCRIPTION
+    The function counts the number of stars in the title of the Winamp window.
+    #>
+    
+    [CmdletBinding()]
+    param(
+    )
+
+    $DebugPreference = 'SilentlyContinue'
+    if ($PSBoundParameters.ContainsKey('Debug')) {
+        $DebugPreference = 'Continue'
+    }
+
+    $VerbosePreference = 'SilentlyContinue'
+    if ($PSBoundParameters.ContainsKey('Verbose')) {
+        $VerbosePreference = 'Continue'
+    }
+
     $wpid = Get-Process winamp -ErrorAction SilentlyContinue
     if (!$wpid) {
         Write-Debug 'Winamp not running.'
