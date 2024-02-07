@@ -1,15 +1,16 @@
 <#
-.VERSION 2023.11.18
+.VERSION 2024.02.07
 
 .SYNOPSIS
 The script sets the colours on the F1 - F5 keys, according to the currently playing song's rating in Winamp.
 
 .DESCRIPTION
-Script that checks Winamp song ratings, and sets the colours on the F1 - F5 keys, on a Logitech G815 keyboard.
+Script that checks Winamp or Plexamp song ratings, and sets the colours on the F1 - F5 keys, on a Logitech G815 keyboard.
 
 Needs:
 * https://github.com/levid0s/Logi-SetRGB
-* Winamp title format: `[%artist% - ]$if2(%title%,$filepart(%filename%))[  $repeat(★,%rating%) ]`
+* For Winamp: title format: `[%artist% - ]$if2(%title%,$filepart(%filename%))[  $repeat(★,%rating%) ]`
+* For Plex: $env:PLEX_ADDR and $env:PLEX_TOKEN set.
 
 .EXAMPLE
 .\Set-KeyColorBySongRating.ps1
