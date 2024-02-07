@@ -173,6 +173,8 @@ Add-Type -AssemblyName System.Drawing
 $DebugPreference = 'SilentlyContinue'
 . "$PSScriptRoot/_Winamp-AutoRestartHelpers.ps1"
 
+. "$PSScriptRoot/_PlexHelpers.ps1"
+
 function Set-KeyColor {
     param(
         $writer,
@@ -210,26 +212,47 @@ try {
     $lastRating = $null
     $song = $null
 
-    $proc = Get-Process winamp -ErrorAction SilentlyContinue
+    $proc = $null
 
     while ($true) {
-        while ($null -eq $proc -or $proc.HasExited) {
-            Write-Verbose 'Waiting for Winamp to start..'
+        while ($null -eq $proc -or $proc.HasExited -eq $true) {
+            $pw = Get-Process winamp -ErrorAction SilentlyContinue
+            if ($pw -gt 1) {
+                Write-Warning "Multiple Winamp processes detected: $($pw | Select-Object -ExpandProperty Id)"
+                Continue
+            }
+            if ($pw) {
+                $proc = $pw
+                Continue
+            }
+
+            $pp = Get-Process -Name plexamp -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowhandle -ne 0 }
+            if ($pp) {
+                $proc = $pp
+                Continue
+            }
+            Write-Warning 'Waiting for Winamp or Plexamp to start..'
             Start-Sleep -Seconds 2
-            $proc = Get-Process winamp -ErrorAction SilentlyContinue
         }
-        if ($proc.Count -gt 1) {
-            Throw "Multiple Winamp processes detected: $($proc | Select-Object -ExpandProperty Id)"
-        }
+
 
         Start-Sleep -Milliseconds 200
         
         $lastSong = $song
         $lastRating = $rating
 
-        $song = Get-WinampSongTitle -ErrorAction SilentlyContinue
-        $rating = Get-WinampSongRating -ErrorAction SilentlyContinue
-
+        switch ($proc.ProcessName) {
+            winamp {
+                $song = Get-WinampSongTitle -ErrorAction SilentlyContinue
+                $rating = Get-WinampSongRating -ErrorAction SilentlyContinue
+            }
+            plexamp {
+                $NowPlaying = Get-PlexNowPlaying
+                $song = "${NowPlaying.Artist} - ${NowPlaying.Album} - ${NowPlaying.Title}"
+                $rating = $NowPlaying.Rating / 2
+            }
+        }
+        
         if ($rating -eq $lastRating) {
             continue
         }
