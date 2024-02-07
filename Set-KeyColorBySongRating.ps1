@@ -217,7 +217,7 @@ try {
     while ($true) {
         while ($null -eq $proc -or $proc.HasExited -eq $true) {
             $pw = Get-Process winamp -ErrorAction SilentlyContinue
-            if ($pw -gt 1) {
+            if ($pw.Count -gt 1) {
                 Write-Warning "Multiple Winamp processes detected: $($pw | Select-Object -ExpandProperty Id)"
                 Continue
             }
@@ -242,13 +242,13 @@ try {
         $lastRating = $rating
 
         switch ($proc.ProcessName) {
-            winamp {
+            'winamp' {
                 $song = Get-WinampSongTitle -ErrorAction SilentlyContinue
                 $rating = Get-WinampSongRating -ErrorAction SilentlyContinue
             }
-            plexamp {
+            'plexamp' {
                 $NowPlaying = Get-PlexNowPlaying
-                $song = "${NowPlaying.Artist} - ${NowPlaying.Album} - ${NowPlaying.Title}"
+                $song = "$($NowPlaying.Artist) - $($NowPlaying.Album) - $($NowPlaying.Title)"
                 $rating = $NowPlaying.Rating / 2
             }
         }
