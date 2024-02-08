@@ -52,6 +52,7 @@ function Get-PlexApi {
 }
 
 function Get-PlexStatusSessions {
+    [CmdletBinding()]
     $ApiPath = '/status/sessions'
 
     $StatusSessions = Get-PlexApi -ApiPath $ApiPath
@@ -69,11 +70,16 @@ function Get-PlexLibraryMetadata {
 
     $LibraryMetadata = Get-PlexApi -ApiPath $ApiPath
 
+    if ($LibraryMetadata.GetType().Name -eq 'String') {
+        $LibraryMetadata = $LibraryMetadata.Replace('Guid', '_Guid') | ConvertFrom-Json
+    }
+
     return $LibraryMetadata
 }
 
 
 function Get-PlexNowPlaying {
+    [CmdletBinding()]
     param(
         [int]$UserId = 1
     )
@@ -85,26 +91,32 @@ function Get-PlexNowPlaying {
     }
 
     if (!$NowPlayingFiltered) {
+        Write-Debug 'No Now Playing found.'
         return
     }
 
     if (!$NowPlayingFiltered.RatingKey) {
+        Write-Debug 'No RatingKey found in Now Playing.'
         return
     }
 
     $RatingKey = $NowPlayingFiltered.RatingKey
+    Write-Verbose "Now Playing RatingKey: $RatingKey"
 
     $MediaMetadata = Get-PlexLibraryMetadata -RatingKey $RatingKey
 
     if (!$MediaMetadata) {
+        Write-Debug 'No Media Metadata found.'
         return
     }
 
     if (!$MediaMetadata.MediaContainer.Metadata) {
+        Write-Debug 'No MediaContainer.Metadata found.'
         return
     }
 
     $MediaMetadta = $MediaMetadata.MediaContainer.Metadata[0]
+    Write-Verbose "Media Metadata: $($MediaMetadta | ConvertTo-Json -Depth 1)"
 
     $NowPlaying = @{
         # Artist, Album, Year, Title, Rating
